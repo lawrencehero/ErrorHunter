@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../domain/repositories/auth_repository.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
@@ -21,8 +22,9 @@ class _StorageKeys {
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final SharedPreferences _prefs;
+  final AuthRepository _authRepository;
 
-  AuthBloc(this._prefs) : super(const AuthInitial()) {
+  AuthBloc(this._prefs, this._authRepository) : super(const AuthInitial()) {
     on<CheckAuthStatus>(_onCheckAuthStatus);
     on<SendOtp>(_onSendOtp);
     on<VerifyOtp>(_onVerifyOtp);
@@ -38,7 +40,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
 
-    // 模拟短暂延迟（实际无需网络请求）
     await Future.delayed(const Duration(milliseconds: 200));
 
     final token = _prefs.getString(_StorageKeys.token);
@@ -48,9 +49,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final grade = _prefs.getString(_StorageKeys.grade) ?? '';
 
     if (token != null && token.isNotEmpty && userId != null) {
-      // TODO: 调用后端验证 Token 有效性
-      // final isValid = await _authRepository.validateToken(token);
-      // if (!isValid) { await _clearStorage(); emit(const Unauthenticated()); return; }
+      final isValid = await _authRepository.validateToken(token);
+      if (!isValid) {
+        await _clearStorage();
+        emit(const Unauthenticated());
+        return;
+      }
 
       emit(Authenticated(AuthUser.fromStorage(
         id: userId,
@@ -70,13 +74,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
 
     try {
-      // TODO: 调用后端发送验证码 API
-      // await _authRepository.sendOtp(event.phone);
+      await _authRepository.sendOtp(event.phone);
 
-      // 模拟网络请求
-      await Future.delayed(const Duration(seconds: 1));
-
-      // 60秒后可重发
       final canResendAt = DateTime.now().add(const Duration(seconds: 60));
       emit(OtpSent(canResendAt));
     } catch (e) {
@@ -90,34 +89,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
 
     try {
-      // TODO: 调用后端验证 OTP + 注册/登录 API
-      // final response = await _authRepository.verifyOtp(
-      //   phone: event.phone, otp: event.otp, grade: event.grade,
-      // );
-
-      // 模拟网络请求
-      await Future.delayed(const Duration(seconds: 1));
-
-      // 模拟返回数据
-      const mockToken = 'mock_jwt_token_abc123';
-      const mockUserId = 'user_001';
-      const mockNickname = '小明';
+      final user = await _authRepository.verifyOtp(
+        phone: event.phone,
+        otp: event.otp,
+        grade: event.grade,
+      );
 
       // 持久化存储
-      await _prefs.setString(_StorageKeys.token, mockToken);
-      await _prefs.setString(_StorageKeys.userId, mockUserId);
-      await _prefs.setString(_StorageKeys.phone, event.phone);
-      await _prefs.setString(_StorageKeys.nickname, mockNickname);
-      await _prefs.setString(_StorageKeys.grade, event.grade);
+      await _prefs.setString(_StorageKeys.token, user.token);
+      await _prefs.setString(_StorageKeys.userId, user.id);
+      await _prefs.setString(_StorageKeys.phone, user.phone);
+      await _prefs.setString(_StorageKeys.nickname, user.nickname);
+      await _prefs.setString(_StorageKeys.grade, user.grade);
 
-      emit(Authenticated(AuthUser(
-        id: mockUserId,
-        phone: event.phone,
-        nickname: mockNickname,
-        grade: event.grade,
-        token: mockToken,
-        isFirstLogin: true,
-      )));
+      emit(Authenticated(user));
     } catch (e) {
       emit(AuthError('验证失败，请检查验证码'));
     }
@@ -131,7 +116,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     final currentState = state;
     if (currentState is Authenticated) {
-      // TODO: 调用后端更新昵称 API
+      await _authRepository.updateNickname(event.nickname);
       await _prefs.setString(_StorageKeys.nickname, event.nickname);
 
       emit(Authenticated(AuthUser(

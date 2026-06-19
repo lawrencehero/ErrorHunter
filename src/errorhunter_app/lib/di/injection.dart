@@ -7,6 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/local/database_helper.dart';
 import '../data/remote/api_client.dart';
+import '../data/repositories/auth_repository_mock.dart';
+import '../data/repositories/question_repository_mock.dart';
+import '../data/repositories/report_repository_mock.dart';
+import '../data/repositories/review_repository_mock.dart';
+import '../domain/repositories/auth_repository.dart';
+import '../domain/repositories/question_repository.dart';
+import '../domain/repositories/report_repository.dart';
+import '../domain/repositories/review_repository.dart';
 import '../features/auth/bloc/auth_bloc.dart';
 import '../features/question/bloc/question_bloc.dart';
 import '../features/report/bloc/report_bloc.dart';
@@ -26,14 +34,36 @@ Future<void> configureDependencies() async {
   sl.registerSingleton<ApiClient>(ApiClient(prefs: prefs));
   sl.registerSingleton<DatabaseHelper>(DatabaseHelper());
 
+  // ─── Repositories (Mock 实现，后端就绪后替换为 Remote 实现) ──
+  sl.registerLazySingleton<AuthRepository>(
+    () => AuthRepositoryMock(),
+  );
+  sl.registerLazySingleton<QuestionRepository>(
+    () => QuestionRepositoryMock(),
+  );
+  sl.registerLazySingleton<ReviewRepository>(
+    () => ReviewRepositoryMock(),
+  );
+  sl.registerLazySingleton<ReportRepository>(
+    () => ReportRepositoryMock(),
+  );
+
   // ─── BLoCs / Cubits ────────────────────────────────────
-  sl.registerFactory<AuthBloc>(() => AuthBloc(sl<SharedPreferences>()));
-  sl.registerFactory<QuestionBloc>(() => QuestionBloc());
-  sl.registerFactory<ReviewBloc>(() => ReviewBloc());
-  sl.registerFactory<ReportBloc>(() => ReportBloc());
+  sl.registerFactory<AuthBloc>(
+    () => AuthBloc(sl<SharedPreferences>(), sl<AuthRepository>()),
+  );
+  sl.registerFactory<QuestionBloc>(
+    () => QuestionBloc(sl<QuestionRepository>()),
+  );
+  sl.registerFactory<ReviewBloc>(
+    () => ReviewBloc(sl<ReviewRepository>()),
+  );
+  sl.registerFactory<ReportBloc>(
+    () => ReportBloc(sl<ReportRepository>()),
+  );
 
   // ─── Data Sources ───────────────────────────────────────
-  // TODO: 注册 RemoteDataSource（依赖 ApiClient）
+  // TODO: 注册 RemoteDataSource（依赖 ApiClient），后端就绪后启用
   // sl.registerLazySingleton<AuthRemoteDataSource>(
   //   () => AuthRemoteDataSourceImpl(client: sl<ApiClient>()),
   // );
@@ -42,21 +72,6 @@ Future<void> configureDependencies() async {
   // );
   // sl.registerLazySingleton<QuestionLocalDataSource>(
   //   () => QuestionLocalDataSourceImpl(db: sl<DatabaseHelper>()),
-  // );
-
-  // ─── Repositories ───────────────────────────────────────
-  // TODO: 注册 Repository 实现类
-  // sl.registerLazySingleton<AuthRepository>(
-  //   () => AuthRepositoryImpl(remote: sl(), local: sl()),
-  // );
-  // sl.registerLazySingleton<QuestionRepository>(
-  //   () => QuestionRepositoryImpl(remote: sl(), local: sl()),
-  // );
-  // sl.registerLazySingleton<ReviewRepository>(
-  //   () => ReviewRepositoryImpl(remote: sl(), local: sl()),
-  // );
-  // sl.registerLazySingleton<ReportRepository>(
-  //   () => ReportRepositoryImpl(remote: sl()),
   // );
 
   // ─── Use Cases ──────────────────────────────────────────

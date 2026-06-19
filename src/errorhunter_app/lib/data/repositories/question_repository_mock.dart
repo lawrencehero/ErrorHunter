@@ -1,0 +1,87 @@
+/// 错题猎手 - Question Repository Mock 实现
+/// 使用 MockQuestionDataSource 提供数据，后端就绪后替换为 Remote 实现
+library;
+
+import '../../domain/repositories/question_repository.dart';
+import '../../features/question/models/question_model.dart';
+import '../mock/mock_question_data_source.dart';
+
+/// Question Repository 的 Mock 实现
+class QuestionRepositoryMock implements QuestionRepository {
+  QuestionRepositoryMock({MockQuestionDataSource? dataSource})
+      : _dataSource = dataSource ?? MockQuestionDataSource();
+
+  final MockQuestionDataSource _dataSource;
+
+  @override
+  Future<List<QuestionModel>> getQuestions({
+    ErrorCategory? category,
+    QuestionStatus? status,
+    String? knowledgePointId,
+    int page = 1,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    var questions = _dataSource.getQuestions();
+
+    if (status != null) {
+      questions = questions.where((q) => q.status == status).toList();
+    }
+    if (category != null) {
+      questions =
+          questions.where((q) => q.errorCategory == category).toList();
+    }
+    if (knowledgePointId != null) {
+      questions = questions
+          .where((q) =>
+              q.knowledgePoints.any((kp) => kp.id == knowledgePointId))
+          .toList();
+    }
+
+    return questions;
+  }
+
+  @override
+  Future<List<QuestionModel>> searchQuestions(String keyword) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final allQuestions = _dataSource.getQuestions();
+    if (keyword.isEmpty) return allQuestions;
+
+    return allQuestions
+        .where((q) =>
+            (q.ocrText?.contains(keyword) ?? false) ||
+            q.subject.contains(keyword))
+        .toList();
+  }
+
+  @override
+  Future<QuestionModel?> getQuestionDetail(String id) async {
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    final allQuestions = _dataSource.getQuestions();
+    return allQuestions.where((q) => q.id == id).firstOrNull;
+  }
+
+  @override
+  Future<QuestionModel> addQuestion(QuestionModel question) async {
+    await Future.delayed(const Duration(milliseconds: 1000));
+    return question;
+  }
+
+  @override
+  Future<void> updateQuestion(QuestionModel question) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
+  @override
+  Future<void> deleteQuestion(String id) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
+  @override
+  Future<String> ocrImage(String imagePath) async {
+    await Future.delayed(const Duration(seconds: 2));
+    return _dataSource.getMockOcrResult();
+  }
+}
