@@ -1,0 +1,57 @@
+# ErrorHunter Server Configuration
+
+server:
+  port: 8080
+  mode: debug  # debug, release, test
+
+database:
+  host: localhost
+  port: 5432
+  user: errorhunter
+  password: errorhunter123
+  dbname: errorhunter
+  sslmode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300  # seconds
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+  pool_size: 10
+
+minio:
+  endpoint: localhost:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+  bucket: errorhunter
+  region: us-east-1
+  use_ssl: false
+
+jwt:
+  access_secret: "errorhunter-access-secret-key-change-in-production"
+  refresh_secret: "errorhunter-refresh-secret-key-change-in-production"
+  access_expire: 15      # minutes
+  refresh_expire: 10080  # minutes (7 days)
+
+otp:
+  expire: 300        # seconds (5 minutes)
+  resend_interval: 60 # seconds
+  daily_limit: 10
+  max_retry: 5       # max wrong attempts before lockout
+  lockout_duration: 1800 # seconds (30 minutes)
+
+ocr:
+  provider: aliyun   # aliyun, mock
+  timeout: 5         # seconds
+  aliyun:
+    access_key: ""
+    secret_key: ""
+    endpoint: "ocr.cn-hangzhou.aliyuncs.com"
+
+log:
+  level: debug       # debug, info, warn, error
+  format: json       # json, console
+  output: stdout     # stdout, file
+  file_path: "./logs/server.log"
