@@ -1,9 +1,9 @@
 # =============================================================================
 # 错题猎手（ErrorHunter）OpenAPI 3.0.3 规范
 # 生成日期：2026-06-19
-# 来源：技术设计文档 V1.0 + 技术设计-Part1-数据库与API
-# 说明：本文件以技术设计文档为权威来源，前端 api_endpoints.dart 中部分
-#       路径命名存在差异，已在对应端点 x-frontend-path 扩展字段中标注
+# 来源：以前端 api_endpoints.dart 为唯一权威路径来源
+# 说明：所有 paths 已与 src/errorhunter_app/lib/data/remote/api_endpoints.dart 对齐
+#       achievements 相关 schema 已标记 x-deferred，待 PM 确认
 # =============================================================================
 
 openapi: 3.0.3
@@ -14,7 +14,7 @@ info:
     错题猎手后端 API 接口规范。
     覆盖用户认证、错题管理、复习引擎、学情报告、离线同步、图片服务等全部模块。
     统一响应格式：{"code": 0, "message": "success", "data": {...}}
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: ErrorHunter Arch Team
   license:
@@ -32,19 +32,21 @@ security:
 
 tags:
   - name: Auth
-    description: 用户认证模块 — 注册、登录、验证码、Token刷新、登出
+    description: 用户认证模块 — 注册、登录、OTP验证码、Token刷新、登出
   - name: User
     description: 用户信息模块 — 个人信息查询与更新、账号注销与恢复
   - name: Question
-    description: 错题管理模块 — CRUD、软删除、回收站
+    description: 错题管理模块 — CRUD、软删除、回收站、永久删除
   - name: Review
-    description: 复习引擎模块 — 今日待复习、自评提交、复活检测、补签
+    description: 复习引擎模块 — 复习队列、自评提交、复活检测、补签
   - name: Report
     description: 学情报告模块 — Dashboard、周报
   - name: Sync
-    description: 离线同步模块 — 批量上传、状态查询、手动重试
+    description: 离线同步模块 — Push推送、Pull拉取、手动重试
+  - name: Upload
+    description: 上传服务模块 — OCR识别、OSS签名上传URL
   - name: Image
-    description: 图片服务模块 — OSS签名上传URL、签名访问URL、批量清理
+    description: 图片服务模块 — 签名访问URL、批量清理
 
 # ═══════════════════════════════════════════════════════════════
 # PATHS
@@ -55,21 +57,21 @@ paths:
   # Auth 认证模块
   # ─────────────────────────────────────────────────────────────
 
-  /auth/send-code:
+  /auth/otp/send:
     post:
       tags: [Auth]
-      summary: 发送验证码
+      summary: 发送OTP验证码
       description: |
         向指定手机号发送短信验证码，用于注册/登录/重置密码场景。
         频率限制：60秒内不可重发，每日上限10次。
-      operationId: authSendCode
+      operationId: authOtpSend
       security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SendCodeRequest'
+              $ref: '#/components/schemas/SendOtpRequest'
       responses:
         '200':
           description: 验证码发送成功
@@ -81,7 +83,39 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/SendCodeResponse'
+                        $ref: '#/components/schemas/SendOtpResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      summary: 验证OTP验证码
+      description: |
+        独立验证码校验接口。前端在注册/登录流程中先调用此接口验证OTP有效性，
+        验证通过后返回临时 verify_token，再携带该 token 调用注册/登录接口。
+      operationId: authOtpVerify
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+      responses:
+        '200':
+          description: 验证码校验通过
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/VerifyOtpResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -91,6 +125,7 @@ paths:
       summary: 用户注册
       description: |
         新用户手机号+验证码注册（FR-100）。
+        需先通过 /auth/otp/verify 获取 verify_token。
         需勾选家长知情同意（FR-001-3）。
       operationId: authRegister
       security: []
@@ -125,6 +160,7 @@ paths:
       summary: 用户登录
       description: |
         手机号+验证码登录（FR-101），含设备管理。
+        需先通过 /auth/otp/verify 获取 verify_token。
         超过3台设备时自动踢出最早登录的设备（FR-001-6）。
         若用户处于注销冷静期，返回 deactivation_status 提示。
       operationId: authLogin
@@ -161,7 +197,6 @@ paths:
         Access Token 有效期24小时，Refresh Token 有效期30天。
       operationId: authRefreshToken
       security: []
-      x-frontend-path: /auth/refresh
       requestBody:
         required: true
         content:
@@ -203,13 +238,12 @@ paths:
   # User 用户信息模块
   # ─────────────────────────────────────────────────────────────
 
-  /users/profile:
+  /users/me:
     get:
       tags: [User]
       summary: 获取个人信息
       description: 获取当前登录用户的完整个人资料。
-      operationId: getUserProfile
-      x-frontend-path: /users/me
+      operationId: getUserMe
       responses:
         '200':
           description: 获取成功
@@ -225,12 +259,12 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /users/me/settings:
     patch:
       tags: [User]
-      summary: 更新个人信息
+      summary: 更新个人设置
       description: 支持部分更新，所有字段选填。更新后返回完整profile对象。
-      operationId: updateUserProfile
-      x-frontend-path: /users/me/settings
+      operationId: updateUserSettings
       requestBody:
         required: true
         content:
@@ -254,7 +288,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /users/deactivate:
+  /users/me/deactivate:
     post:
       tags: [User]
       summary: 发起账号注销
@@ -262,7 +296,6 @@ paths:
         用户申请注销账号，进入7天冷静期（《个人信息保护法》第47条合规要求）。
         冷静期内重新登录可自动取消注销。
       operationId: userDeactivate
-      x-frontend-path: /users/me/deactivate
       requestBody:
         required: true
         content:
@@ -506,6 +539,85 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /questions/{id}/restore:
+    post:
+      tags: [Question]
+      summary: 恢复单道错题
+      description: 从回收站恢复指定的单道错题。
+      operationId: restoreQuestion
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdPath'
+      responses:
+        '200':
+          description: 恢复成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restored:
+                            type: boolean
+                            example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /questions/{id}/permanent:
+    delete:
+      tags: [Question]
+      summary: 永久删除单道错题
+      description: |
+        永久删除指定错题（不可恢复）。
+        仅允许对已在回收站中的错题执行此操作。
+        需二次确认（confirm=true）。
+      operationId: permanentDeleteQuestion
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm:
+                  type: boolean
+                  description: 必须为true，二次确认
+                  example: true
+      responses:
+        '200':
+          description: 永久删除成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            format: int64
+                            description: 已永久删除的错题ID
+                          deleted_permanently:
+                            type: boolean
+                            example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /questions/recycle-bin:
     get:
       tags: [Question]
@@ -530,6 +642,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /questions/recycle-bin/clear:
     delete:
       tags: [Question]
       summary: 清空回收站
@@ -570,67 +683,18 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /questions/recycle-bin/restore:
-    post:
-      tags: [Question]
-      summary: 恢复错题
-      description: 从回收站批量恢复错题，单次最多50道。
-      operationId: restoreQuestions
-      x-frontend-path: /questions/{id}/restore
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [question_ids]
-              properties:
-                question_ids:
-                  type: array
-                  items:
-                    type: integer
-                    format: int64
-                  minItems: 1
-                  maxItems: 50
-                  description: 要恢复的错题ID列表
-      responses:
-        '200':
-          description: 恢复成功
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/BaseResponse'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          restored_count:
-                            type: integer
-                            description: 成功恢复的数量
-                          failed_ids:
-                            type: array
-                            items:
-                              type: integer
-                              format: int64
-                            description: 恢复失败的错题ID
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
   # ─────────────────────────────────────────────────────────────
   # Review 复习模块
   # ─────────────────────────────────────────────────────────────
 
-  /reviews/today:
+  /reviews/queue:
     get:
       tags: [Review]
-      summary: 今日待复习列表
+      summary: 复习队列
       description: |
-        获取今日待复习的错题列表，包含正常复习项和复活检测项。
+        获取当前待复习的错题队列，包含正常复习项和复活检测项。
         review_items按优先级排序（FR-400-5），revive_items最多3道（FR-500-4a）。
-      operationId: getTodayReviews
-      x-frontend-path: /reviews/queue
+      operationId: getReviewQueue
       responses:
         '200':
           description: 获取成功
@@ -642,26 +706,25 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/TodayReviewResponse'
+                        $ref: '#/components/schemas/ReviewQueueResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /reviews/complete:
+  /reviews/result:
     post:
       tags: [Review]
-      summary: 提交复习自评
+      summary: 提交复习结果
       description: |
         提交对某道错题的复习自评结果（FR-401）。
         根据艾宾浩斯调度算法计算下次复习时间和消灭进度。
         复活检测时需额外提供 revive_result。
-      operationId: completeReview
-      x-frontend-path: /reviews/result
+      operationId: submitReviewResult
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CompleteReviewRequest'
+              $ref: '#/components/schemas/ReviewResultRequest'
       responses:
         '200':
           description: 自评提交成功
@@ -673,7 +736,7 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/CompleteReviewResponse'
+                        $ref: '#/components/schemas/ReviewResultResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
@@ -808,7 +871,7 @@ paths:
     get:
       tags: [Report]
       summary: 周报详情
-      description: 获取单份周报详情，额外包含成就徽章和重点关注知识点建议。
+      description: 获取单份周报详情，额外包含重点关注知识点建议。
       operationId: getWeeklyReportDetail
       parameters:
         - name: id
@@ -834,27 +897,70 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ─────────────────────────────────────────────────────────────
-  # Sync 同步模块
+  # Upload 上传模块
   # ─────────────────────────────────────────────────────────────
 
-  /sync/upload:
+  /upload/ocr:
     post:
-      tags: [Sync]
-      summary: 批量上传离线数据
+      tags: [Upload]
+      summary: OCR图片识别
       description: |
-        GR-002单向上传，客户端将离线期间积累的变更批量推送到服务端。
-        单次最多50条，每条独立返回成功/失败状态。
-      operationId: syncUpload
-      x-frontend-path: /sync/push
+        上传图片并执行OCR文字识别。前端在录入错题第一步拍照后调用此接口，
+        获取识别结果供用户确认/编辑，确认后在创建错题时传入 ocr_text。
+        支持JPEG/PNG/HEIC格式，单文件最大20MB。
+      operationId: uploadOcr
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: 题目图片文件
+      responses:
+        '200':
+          description: OCR识别成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OcrResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: 文件大小超出限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /upload/url:
+    post:
+      tags: [Upload]
+      summary: 获取OSS上传签名URL
+      description: |
+        获取阿里云OSS预签名上传URL，客户端直传图片。
+        支持JPEG/PNG/HEIC格式，单文件最大20MB。
+      operationId: getUploadUrl
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SyncUploadRequest'
+              $ref: '#/components/schemas/UploadUrlRequest'
       responses:
         '200':
-          description: 上传处理完成
+          description: 获取签名URL成功
           content:
             application/json:
               schema:
@@ -863,22 +969,72 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/SyncUploadResponse'
+                        $ref: '#/components/schemas/UploadUrlResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─────────────────────────────────────────────────────────────
+  # Sync 同步模块
+  # ─────────────────────────────────────────────────────────────
+
+  /sync/push:
+    post:
+      tags: [Sync]
+      summary: Push推送离线数据
+      description: |
+        GR-002单向推送，客户端将离线期间积累的变更批量推送到服务端。
+        单次最多50条，每条独立返回成功/失败状态。
+      operationId: syncPush
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: 推送处理完成
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SyncPushResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /sync/status:
+  /sync/pull:
     get:
       tags: [Sync]
-      summary: 同步状态
-      description: 查询当前用户的同步队列状态，包含待处理/失败数量和失败项详情。
-      operationId: getSyncStatus
-      x-frontend-path: /sync/pull
+      summary: Pull拉取远端变更
+      description: |
+        客户端从服务端拉取自上次同步以来的远端变更。
+        返回增量数据及最新同步游标，客户端据此更新本地数据库。
+      operationId: syncPull
+      parameters:
+        - name: since_cursor
+          in: query
+          description: 上次同步游标（时间戳或版本号），首次同步传空
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 单次拉取最大条数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
       responses:
         '200':
-          description: 获取成功
+          description: 拉取成功
           content:
             application/json:
               schema:
@@ -887,7 +1043,7 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/SyncStatusResponse'
+                        $ref: '#/components/schemas/SyncPullResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -937,38 +1093,6 @@ paths:
   # ─────────────────────────────────────────────────────────────
   # Image 图片模块
   # ─────────────────────────────────────────────────────────────
-
-  /images/upload-url:
-    post:
-      tags: [Image]
-      summary: 获取OSS上传签名URL
-      description: |
-        获取阿里云OSS预签名上传URL，客户端直传图片。
-        支持JPEG/PNG/HEIC格式，单文件最大20MB。
-      operationId: getImageUploadUrl
-      x-frontend-path: /upload
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UploadUrlRequest'
-      responses:
-        '200':
-          description: 获取签名URL成功
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/BaseResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/UploadUrlResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '403':
-          $ref: '#/components/responses/Forbidden'
 
   /images/signed-url:
     get:
@@ -1279,9 +1403,9 @@ components:
       description: 复活检测结果
       enum: [REMEMBERED, FORGOTTEN]
 
-    SendCodeSceneEnum:
+    OtpSceneEnum:
       type: string
-      description: 验证码发送场景
+      description: OTP验证码发送场景
       enum: [REGISTER, LOGIN, RESET_PASSWORD]
 
     ImageCategoryEnum:
@@ -1291,7 +1415,7 @@ components:
 
     # === Auth 模块 Schemas ===
 
-    SendCodeRequest:
+    SendOtpRequest:
       type: object
       required: [phone, scene]
       properties:
@@ -1301,9 +1425,9 @@ components:
           description: 11位手机号
           example: '13800138000'
         scene:
-          $ref: '#/components/schemas/SendCodeSceneEnum'
+          $ref: '#/components/schemas/OtpSceneEnum'
 
-    SendCodeResponse:
+    SendOtpResponse:
       type: object
       properties:
         expire_in:
@@ -1315,18 +1439,44 @@ components:
           description: 重发等待时间（秒）
           example: 60
 
-    RegisterRequest:
+    VerifyOtpRequest:
       type: object
-      required: [phone, verify_code, grade, parent_consent]
+      required: [phone, code]
       properties:
         phone:
           type: string
           pattern: '^1[3-9]\d{9}$'
           description: 11位手机号
-        verify_code:
+          example: '13800138000'
+        code:
           type: string
           pattern: '^\d{6}$'
           description: 6位数字验证码
+        scene:
+          $ref: '#/components/schemas/OtpSceneEnum'
+
+    VerifyOtpResponse:
+      type: object
+      properties:
+        verify_token:
+          type: string
+          description: 验证通过的临时令牌，有效期5分钟，用于后续注册/登录
+        expires_in:
+          type: integer
+          description: verify_token有效期（秒）
+          example: 300
+
+    RegisterRequest:
+      type: object
+      required: [phone, verify_token, grade, parent_consent]
+      properties:
+        phone:
+          type: string
+          pattern: '^1[3-9]\d{9}$'
+          description: 11位手机号
+        verify_token:
+          type: string
+          description: 通过 /auth/otp/verify 获取的验证令牌
         grade:
           $ref: '#/components/schemas/GradeEnum'
         parent_consent:
@@ -1341,16 +1491,15 @@ components:
 
     LoginRequest:
       type: object
-      required: [phone, verify_code, device_name, device_type]
+      required: [phone, verify_token, device_name, device_type]
       properties:
         phone:
           type: string
           pattern: '^1[3-9]\d{9}$'
           description: 手机号
-        verify_code:
+        verify_token:
           type: string
-          pattern: '^\d{6}$'
-          description: 6位验证码
+          description: 通过 /auth/otp/verify 获取的验证令牌
         device_name:
           type: string
           minLength: 1
@@ -1512,7 +1661,7 @@ components:
 
     UpdateProfileRequest:
       type: object
-      description: 更新个人信息请求（所有字段选填）
+      description: 更新个人设置请求（所有字段选填）
       properties:
         nickname:
           type: string
@@ -1902,9 +2051,9 @@ components:
           type: integer
           enum: [30, 60, 90]
 
-    TodayReviewResponse:
+    ReviewQueueResponse:
       type: object
-      description: 今日待复习列表响应
+      description: 复习队列响应
       properties:
         review_items:
           type: array
@@ -1929,7 +2078,7 @@ components:
           type: integer
           description: 超出每日上限的题目数量
 
-    CompleteReviewRequest:
+    ReviewResultRequest:
       type: object
       required: [question_id, self_rating]
       properties:
@@ -1951,9 +2100,9 @@ components:
           $ref: '#/components/schemas/ReviveResultEnum'
           description: 复活检测结果（is_revive_check=true时必填）
 
-    CompleteReviewResponse:
+    ReviewResultResponse:
       type: object
-      description: 复习自评结果
+      description: 复习结果响应
       properties:
         question_id:
           type: integer
@@ -2157,13 +2306,17 @@ components:
             $ref: '#/components/schemas/WeakKnowledgeItem'
 
     WeeklyReportDetail:
+      x-deferred: pending PM confirmation
+      description: |
+        周报详情。achievements 数组结构和 focus_knowledge.suggestion 字段
+        的具体内容由产品侧定义，当前 schema 基于合理推断，待 PRD 补充确认。
       type: object
-      description: 周报详情
       allOf:
         - $ref: '#/components/schemas/WeeklyReportSummary'
         - type: object
           properties:
             achievements:
+              x-deferred: pending PM confirmation
               type: array
               items:
                 type: object
@@ -2174,15 +2327,16 @@ components:
                     type: string
                   icon:
                     type: string
-              description: 本周成就徽章
+              description: 本周成就徽章（待PM确认具体结构）
             focus_knowledge:
               type: object
               properties:
                 knowledge_point:
                   $ref: '#/components/schemas/KnowledgePointBrief'
                 suggestion:
+                  x-deferred: pending PM confirmation
                   type: string
-                  description: 学习建议
+                  description: 学习建议（待PM确认具体内容规则）
               description: 重点关注知识点及建议
 
     PaginatedWeeklyReportList:
@@ -2195,104 +2349,39 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    # === Sync 模块 Schemas ===
+    # === Upload 模块 Schemas ===
 
-    SyncItem:
+    OcrResponse:
       type: object
-      required: [local_id, entity_type, operation, payload]
+      description: OCR识别结果
       properties:
-        local_id:
+        text:
           type: string
-          format: uuid
-          description: 本地临时ID
-        entity_type:
-          $ref: '#/components/schemas/SyncEntityTypeEnum'
-        operation:
-          $ref: '#/components/schemas/SyncOperationEnum'
-        payload:
-          type: object
-          description: 完整实体数据JSON
-
-    SyncUploadRequest:
-      type: object
-      required: [items]
-      properties:
-        items:
+          description: 识别出的文字内容
+          maxLength: 10000
+        confidence:
+          type: number
+          format: float
+          description: 识别置信度(0-1)
+          minimum: 0
+          maximum: 1
+        language:
+          type: string
+          description: 识别语言
+          example: zh-CN
+        blocks:
           type: array
+          description: 文字区块坐标信息（可选，用于前端高亮展示）
           items:
-            $ref: '#/components/schemas/SyncItem'
-          minItems: 1
-          maxItems: 50
-
-    SyncResultItem:
-      type: object
-      properties:
-        local_id:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum: [SUCCESS, FAILED]
-        remote_id:
-          type: integer
-          format: int64
-          nullable: true
-          description: 成功时返回远端ID
-        error_code:
-          type: integer
-          nullable: true
-          description: 失败时的业务错误码
-        error_message:
-          type: string
-          nullable: true
-
-    SyncUploadResponse:
-      type: object
-      properties:
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/SyncResultItem'
-        success_count:
-          type: integer
-        fail_count:
-          type: integer
-
-    SyncFailedItem:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        entity_type:
-          $ref: '#/components/schemas/SyncEntityTypeEnum'
-        operation:
-          $ref: '#/components/schemas/SyncOperationEnum'
-        error_message:
-          type: string
-        retry_count:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-
-    SyncStatusResponse:
-      type: object
-      properties:
-        pending_count:
-          type: integer
-        failed_count:
-          type: integer
-        last_sync_at:
-          type: string
-          format: date-time
-          nullable: true
-        failed_items:
-          type: array
-          items:
-            $ref: '#/components/schemas/SyncFailedItem'
-
-    # === Image 模块 Schemas ===
+            type: object
+            properties:
+              text:
+                type: string
+              bbox:
+                type: array
+                items:
+                  type: integer
+                description: 边界框坐标 [x, y, width, height]
 
     UploadUrlRequest:
       type: object
@@ -2330,46 +2419,126 @@ components:
           description: 签名URL有效期（秒）
           example: 300
 
+    # === Sync 模块 Schemas ===
+
+    SyncItem:
+      type: object
+      required: [local_id, entity_type, operation, payload]
+      properties:
+        local_id:
+          type: string
+          format: uuid
+          description: 本地临时ID
+        entity_type:
+          $ref: '#/components/schemas/SyncEntityTypeEnum'
+        operation:
+          $ref: '#/components/schemas/SyncOperationEnum'
+        payload:
+          type: object
+          description: 完整实体数据JSON
+
+    SyncPushRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncItem'
+          minItems: 1
+          maxItems: 50
+
+    SyncResultItem:
+      type: object
+      properties:
+        local_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [SUCCESS, FAILED]
+        remote_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: 成功时返回远端ID
+        error_code:
+          type: integer
+          nullable: true
+          description: 失败时的业务错误码
+        error_message:
+          type: string
+          nullable: true
+
+    SyncPushResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncResultItem'
+        success_count:
+          type: integer
+        fail_count:
+          type: integer
+
+    SyncPullItem:
+      type: object
+      description: 远端变更项
+      properties:
+        entity_type:
+          $ref: '#/components/schemas/SyncEntityTypeEnum'
+        operation:
+          $ref: '#/components/schemas/SyncOperationEnum'
+        remote_id:
+          type: integer
+          format: int64
+        payload:
+          type: object
+          description: 完整实体数据JSON
+        updated_at:
+          type: string
+          format: date-time
+
+    SyncPullResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncPullItem'
+          description: 远端变更列表
+        next_cursor:
+          type: string
+          description: 下一次拉取的游标
+          nullable: true
+        has_more:
+          type: boolean
+          description: 是否还有更多变更待拉取
+        server_time:
+          type: string
+          format: date-time
+          description: 服务端当前时间
+
+    SyncFailedItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        entity_type:
+          $ref: '#/components/schemas/SyncEntityTypeEnum'
+        operation:
+          $ref: '#/components/schemas/SyncOperationEnum'
+        error_message:
+          type: string
+        retry_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
 # ═══════════════════════════════════════════════════════════════
-# TODO 待确认事项
+# 权威来源声明
 # ═══════════════════════════════════════════════════════════════
-x-todo:
-  - id: TODO-001
-    description: 前端 api_endpoints.dart 中 /upload/ocr 端点在技术设计文档中无对应API定义。OCR作为内部适配器由后端调用第三方服务，不对外暴露独立接口。需确认前端是否需要独立的OCR端点，或仅通过创建错题时传入图片URL由后端异步处理。
-    affected_paths:
-      - /upload/ocr
-
-  - id: TODO-002
-    description: 前端定义了 /sync/push 和 /sync/pull 两个端点，但技术设计文档中对应的是 /sync/upload（上传）、/sync/status（状态查询）和 /sync/retry（重试）。当前OpenAPI以文档为准。需确认前端 pull 的实际用途——是拉取远端变更还是查询同步状态。
-    affected_paths:
-      - /sync/push
-      - /sync/pull
-
-  - id: TODO-003
-    description: 前端 /questions/{id}/permanent（永久删除单个错题）在技术设计文档中未定义独立端点，仅有清空回收站的批量操作。需确认是否需要单独的永久删除接口。
-    affected_paths:
-      - /questions/{id}/permanent
-
-  - id: TODO-004
-    description: 前端 /reviews/queue 和 /reviews/result 路径与技术设计文档中的 /reviews/today 和 /reviews/complete 不一致。当前OpenAPI以文档路径为准，已通过 x-frontend-path 标注前端实际路径。需统一前后端路径命名。
-    affected_paths:
-      - /reviews/queue
-      - /reviews/result
-
-  - id: TODO-005
-    description: 前端 /users/me 和 /users/me/settings 与技术设计文档中的 /users/profile 不一致。/users/me/deactivate 对应文档中的 /users/deactivate。需统一。
-    affected_paths:
-      - /users/me
-      - /users/me/settings
-      - /users/me/deactivate
-
-  - id: TODO-006
-    description: 周报详情中的 achievements 数组结构和 focus_knowledge.suggestion 字段的具体内容由产品侧定义，当前schema基于合理推断。需PRD补充确认。
-    affected_schemas:
-      - WeeklyReportDetail
-
-  - id: TODO-007
-    description: 前端 /auth/otp/send 和 /auth/otp/verify 路径与技术设计文档中的 /auth/send-code 不一致，且文档中验证码验证融合在注册/登录接口中，无独立verify端点。需确认前端是否需要独立的验证码校验接口。
-    affected_paths:
-      - /auth/otp/send
-      - /auth/otp/verify
+x-source-of-truth: src/errorhunter_app/lib/data/remote/api_endpoints.dart
