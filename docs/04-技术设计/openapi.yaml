@@ -1,0 +1,2375 @@
+# =============================================================================
+# 错题猎手（ErrorHunter）OpenAPI 3.0.3 规范
+# 生成日期：2026-06-19
+# 来源：技术设计文档 V1.0 + 技术设计-Part1-数据库与API
+# 说明：本文件以技术设计文档为权威来源，前端 api_endpoints.dart 中部分
+#       路径命名存在差异，已在对应端点 x-frontend-path 扩展字段中标注
+# =============================================================================
+
+openapi: 3.0.3
+
+info:
+  title: 错题猎手（ErrorHunter）API
+  description: |
+    错题猎手后端 API 接口规范。
+    覆盖用户认证、错题管理、复习引擎、学情报告、离线同步、图片服务等全部模块。
+    统一响应格式：{"code": 0, "message": "success", "data": {...}}
+  version: 1.0.0
+  contact:
+    name: ErrorHunter Arch Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.errorhunter.com/v1
+    description: 生产环境
+  - url: https://api-dev.errorhunter.com/v1
+    description: 开发环境
+
+# ─── 全局安全方案 ─────────────────────────────────────────────
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Auth
+    description: 用户认证模块 — 注册、登录、验证码、Token刷新、登出
+  - name: User
+    description: 用户信息模块 — 个人信息查询与更新、账号注销与恢复
+  - name: Question
+    description: 错题管理模块 — CRUD、软删除、回收站
+  - name: Review
+    description: 复习引擎模块 — 今日待复习、自评提交、复活检测、补签
+  - name: Report
+    description: 学情报告模块 — Dashboard、周报
+  - name: Sync
+    description: 离线同步模块 — 批量上传、状态查询、手动重试
+  - name: Image
+    description: 图片服务模块 — OSS签名上传URL、签名访问URL、批量清理
+
+# ═══════════════════════════════════════════════════════════════
+# PATHS
+# ═══════════════════════════════════════════════════════════════
+paths:
+
+  # ─────────────────────────────────────────────────────────────
+  # Auth 认证模块
+  # ─────────────────────────────────────────────────────────────
+
+  /auth/send-code:
+    post:
+      tags: [Auth]
+      summary: 发送验证码
+      description: |
+        向指定手机号发送短信验证码，用于注册/登录/重置密码场景。
+        频率限制：60秒内不可重发，每日上限10次。
+      operationId: authSendCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendCodeRequest'
+      responses:
+        '200':
+          description: 验证码发送成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SendCodeResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: 用户注册
+      description: |
+        新用户手机号+验证码注册（FR-100）。
+        需勾选家长知情同意（FR-001-3）。
+      operationId: authRegister
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 用户登录
+      description: |
+        手机号+验证码登录（FR-101），含设备管理。
+        超过3台设备时自动踢出最早登录的设备（FR-001-6）。
+        若用户处于注销冷静期，返回 deactivation_status 提示。
+      operationId: authLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: 刷新Token
+      description: |
+        使用 Refresh Token 获取新的 Access Token。
+        Access Token 有效期24小时，Refresh Token 有效期30天。
+      operationId: authRefreshToken
+      security: []
+      x-frontend-path: /auth/refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Token刷新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 退出登录
+      description: 使当前 Access Token 失效，加入 Redis 黑名单。
+      operationId: authLogout
+      responses:
+        '200':
+          description: 退出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaseResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─────────────────────────────────────────────────────────────
+  # User 用户信息模块
+  # ─────────────────────────────────────────────────────────────
+
+  /users/profile:
+    get:
+      tags: [User]
+      summary: 获取个人信息
+      description: 获取当前登录用户的完整个人资料。
+      operationId: getUserProfile
+      x-frontend-path: /users/me
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      tags: [User]
+      summary: 更新个人信息
+      description: 支持部分更新，所有字段选填。更新后返回完整profile对象。
+      operationId: updateUserProfile
+      x-frontend-path: /users/me/settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/deactivate:
+    post:
+      tags: [User]
+      summary: 发起账号注销
+      description: |
+        用户申请注销账号，进入7天冷静期（《个人信息保护法》第47条合规要求）。
+        冷静期内重新登录可自动取消注销。
+      operationId: userDeactivate
+      x-frontend-path: /users/me/deactivate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeactivateRequest'
+      responses:
+        '200':
+          description: 注销申请已提交
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeactivateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /users/reactivate:
+    post:
+      tags: [User]
+      summary: 取消注销
+      description: 冷静期内取消注销申请，恢复正常账号状态。
+      operationId: userReactivate
+      responses:
+        '200':
+          description: 注销已取消
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user_id:
+                            type: integer
+                            format: int64
+                            description: 用户ID
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─────────────────────────────────────────────────────────────
+  # Question 错题模块
+  # ─────────────────────────────────────────────────────────────
+
+  /questions:
+    post:
+      tags: [Question]
+      summary: 创建错题
+      description: |
+        录入新错题（FR-200第三步提交）。
+        需关联1-3个知识点，错因粗分类必填。
+        存储空间不足时返回403。
+      operationId: createQuestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuestionRequest'
+      responses:
+        '201':
+          description: 录入成功，已加入复习计划
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QuestionSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    get:
+      tags: [Question]
+      summary: 错题列表
+      description: 分页查询当前用户的错题列表，支持多维度筛选和排序。
+      operationId: listQuestions
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          description: 错题状态筛选，可逗号分隔多选
+          schema:
+            type: string
+            example: NOT_STARTED,REVIEWING
+        - name: error_category
+          in: query
+          description: 错因粗分类筛选
+          schema:
+            $ref: '#/components/schemas/ErrorCategoryEnum'
+        - name: knowledge_point_id
+          in: query
+          description: 知识点ID筛选
+          schema:
+            type: integer
+        - name: start_date
+          in: query
+          description: 录入起始日期
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: 录入结束日期
+          schema:
+            type: string
+            format: date
+        - name: keyword
+          in: query
+          description: 搜索OCR文字内容
+          schema:
+            type: string
+            maxLength: 100
+        - name: sort_by
+          in: query
+          description: 排序字段
+          schema:
+            type: string
+            enum: [created_at, updated_at]
+            default: created_at
+        - name: sort_order
+          in: query
+          description: 排序方向
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaginatedQuestionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /questions/{id}:
+    get:
+      tags: [Question]
+      summary: 错题详情
+      description: 获取单道错题的完整信息，包含复习历史和知识点路径。
+      operationId: getQuestionDetail
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdPath'
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QuestionDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Question]
+      summary: 更新错题
+      description: 部分更新错题信息。knowledge_point_ids和custom_tags为全量替换。
+      operationId: updateQuestion
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuestionRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QuestionDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Question]
+      summary: 软删除错题
+      description: 将错题移入回收站，30天内可恢复。
+      operationId: deleteQuestion
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdPath'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SoftDeleteResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /questions/recycle-bin:
+    get:
+      tags: [Question]
+      summary: 回收站列表
+      description: 获取回收站中的错题列表，每项含剩余可恢复天数。
+      operationId: listRecycleBin
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaginatedRecycleBinList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [Question]
+      summary: 清空回收站
+      description: |
+        永久删除回收站中的所有错题（不可恢复）。
+        需二次确认（confirm=true），FR-202-6。
+      operationId: clearRecycleBin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm:
+                  type: boolean
+                  description: 必须为true，二次确认
+                  example: true
+      responses:
+        '200':
+          description: 清空成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deleted_count:
+                            type: integer
+                            description: 永久删除的错题数量
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /questions/recycle-bin/restore:
+    post:
+      tags: [Question]
+      summary: 恢复错题
+      description: 从回收站批量恢复错题，单次最多50道。
+      operationId: restoreQuestions
+      x-frontend-path: /questions/{id}/restore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_ids]
+              properties:
+                question_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                  minItems: 1
+                  maxItems: 50
+                  description: 要恢复的错题ID列表
+      responses:
+        '200':
+          description: 恢复成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restored_count:
+                            type: integer
+                            description: 成功恢复的数量
+                          failed_ids:
+                            type: array
+                            items:
+                              type: integer
+                              format: int64
+                            description: 恢复失败的错题ID
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─────────────────────────────────────────────────────────────
+  # Review 复习模块
+  # ─────────────────────────────────────────────────────────────
+
+  /reviews/today:
+    get:
+      tags: [Review]
+      summary: 今日待复习列表
+      description: |
+        获取今日待复习的错题列表，包含正常复习项和复活检测项。
+        review_items按优先级排序（FR-400-5），revive_items最多3道（FR-500-4a）。
+      operationId: getTodayReviews
+      x-frontend-path: /reviews/queue
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TodayReviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /reviews/complete:
+    post:
+      tags: [Review]
+      summary: 提交复习自评
+      description: |
+        提交对某道错题的复习自评结果（FR-401）。
+        根据艾宾浩斯调度算法计算下次复习时间和消灭进度。
+        复活检测时需额外提供 revive_result。
+      operationId: completeReview
+      x-frontend-path: /reviews/result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteReviewRequest'
+      responses:
+        '200':
+          description: 自评提交成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CompleteReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /reviews/revive-check:
+    get:
+      tags: [Review]
+      summary: 复活检测预览
+      description: 获取即将到期的复活检测题目预览列表。
+      operationId: getReviveCheckPreview
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ReviveCheckPreview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /reviews/makeup-sign:
+    post:
+      tags: [Review]
+      summary: 补签
+      description: |
+        打卡断签后允许每月补签1次，只能补签昨天（V1.1新增）。
+        补签成功后连续打卡天数+1。
+      operationId: makeupSign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date]
+              properties:
+                date:
+                  type: string
+                  format: date
+                  description: 补签日期，必须是昨天
+      responses:
+        '200':
+          description: 补签成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          streak_days:
+                            type: integer
+                            description: 补签后的连续打卡天数
+                          makeup_sign_used:
+                            type: boolean
+                            description: 本月是否已使用补签
+                            example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─────────────────────────────────────────────────────────────
+  # Report 报告模块
+  # ─────────────────────────────────────────────────────────────
+
+  /reports/dashboard:
+    get:
+      tags: [Report]
+      summary: 首页Dashboard
+      description: |
+        获取首页仪表盘数据（FR-600），包含问候语、今日任务、统计概览、
+        错因分布、周趋势、薄弱知识点TOP、打卡日历等。
+        error_distribution不包含UNKNOWN类别（FR-300-9）。
+      operationId: getDashboard
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DashboardResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /reports/weekly:
+    get:
+      tags: [Report]
+      summary: 周报列表
+      description: 分页获取学情周报列表（FR-602）。
+      operationId: listWeeklyReports
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: page_size
+          in: query
+          description: 每页条数（1-20）
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaginatedWeeklyReportList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /reports/weekly/{id}:
+    get:
+      tags: [Report]
+      summary: 周报详情
+      description: 获取单份周报详情，额外包含成就徽章和重点关注知识点建议。
+      operationId: getWeeklyReportDetail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 周报ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WeeklyReportDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────
+  # Sync 同步模块
+  # ─────────────────────────────────────────────────────────────
+
+  /sync/upload:
+    post:
+      tags: [Sync]
+      summary: 批量上传离线数据
+      description: |
+        GR-002单向上传，客户端将离线期间积累的变更批量推送到服务端。
+        单次最多50条，每条独立返回成功/失败状态。
+      operationId: syncUpload
+      x-frontend-path: /sync/push
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncUploadRequest'
+      responses:
+        '200':
+          description: 上传处理完成
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SyncUploadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sync/status:
+    get:
+      tags: [Sync]
+      summary: 同步状态
+      description: 查询当前用户的同步队列状态，包含待处理/失败数量和失败项详情。
+      operationId: getSyncStatus
+      x-frontend-path: /sync/pull
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SyncStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sync/retry:
+    post:
+      tags: [Sync]
+      summary: 手动重试同步
+      description: 手动重试指定的失败同步项，单次最多10条。
+      operationId: syncRetry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sync_ids]
+              properties:
+                sync_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                  minItems: 1
+                  maxItems: 10
+                  description: 要重试的同步队列ID列表
+      responses:
+        '200':
+          description: 重试已触发
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          retried_count:
+                            type: integer
+                            description: 已触发重试的数量
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─────────────────────────────────────────────────────────────
+  # Image 图片模块
+  # ─────────────────────────────────────────────────────────────
+
+  /images/upload-url:
+    post:
+      tags: [Image]
+      summary: 获取OSS上传签名URL
+      description: |
+        获取阿里云OSS预签名上传URL，客户端直传图片。
+        支持JPEG/PNG/HEIC格式，单文件最大20MB。
+      operationId: getImageUploadUrl
+      x-frontend-path: /upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+      responses:
+        '200':
+          description: 获取签名URL成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UploadUrlResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /images/signed-url:
+    get:
+      tags: [Image]
+      summary: 获取图片签名访问URL
+      description: 获取私有OSS对象的临时签名访问URL（NFR-001-4）。
+      operationId: getImageSignedUrl
+      parameters:
+        - name: file_url
+          in: query
+          required: true
+          description: OSS文件路径
+          schema:
+            type: string
+        - name: expires
+          in: query
+          description: URL有效期（秒），60-3600
+          schema:
+            type: integer
+            minimum: 60
+            maximum: 3600
+            default: 1800
+      responses:
+        '200':
+          description: 获取签名URL成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          signed_url:
+                            type: string
+                            description: 带签名的临时访问URL
+                          expires_in:
+                            type: integer
+                            description: URL有效期（秒）
+                            example: 1800
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /images/batch:
+    delete:
+      tags: [Image]
+      summary: 批量清理回收站图片
+      description: |
+        清理回收站中已删除错题关联的图片，释放存储空间（V1.1新增）。
+        仅允许清理deleted_at非NULL的错题图片。
+      operationId: batchDeleteImages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_ids]
+              properties:
+                question_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                  minItems: 1
+                  maxItems: 50
+                  description: 回收站中的错题ID列表
+      responses:
+        '200':
+          description: 清理成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deleted_count:
+                            type: integer
+                            description: 删除的图片数量
+                          freed_bytes:
+                            type: integer
+                            format: int64
+                            description: 释放的存储空间（字节）
+                          storage_used:
+                            type: integer
+                            format: int64
+                            description: 清理后已用存储（字节）
+                          storage_limit:
+                            type: integer
+                            format: int64
+                            description: 存储上限（字节）
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+# ═══════════════════════════════════════════════════════════════
+# COMPONENTS
+# ═══════════════════════════════════════════════════════════════
+components:
+
+  # ─── Security Schemes ──────────────────────────────────────
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT Access Token，通过 Authorization: Bearer <token> 传递。
+        Access Token 有效期24小时，Refresh Token 有效期30天。
+
+  # ─── Parameters ────────────────────────────────────────────
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: 页码，从1开始
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      description: 每页条数（1-50）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+
+    QuestionIdPath:
+      name: id
+      in: path
+      required: true
+      description: 错题ID
+      schema:
+        type: integer
+        format: int64
+
+  # ─── Reusable Responses ────────────────────────────────────
+  responses:
+    BadRequest:
+      description: 请求参数校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Token无效或已过期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 无权访问
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: 资源冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: 请求过于频繁
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: 服务暂时不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  # ─── Schemas ───────────────────────────────────────────────
+  schemas:
+
+    # === 基础响应结构 ===
+
+    BaseResponse:
+      type: object
+      description: 统一响应信封
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，0表示成功
+          example: 0
+        message:
+          type: string
+          description: 提示信息
+          example: success
+        data:
+          nullable: true
+          description: 响应数据
+
+    ErrorResponse:
+      type: object
+      description: 错误响应
+      properties:
+        code:
+          type: integer
+          description: 业务错误码（参见错误码规范）
+          example: 10001
+        message:
+          type: string
+          description: 人类可读的错误描述
+          example: 该手机号已注册，是否直接登录？
+        data:
+          nullable: true
+          description: 附加错误数据
+
+    Pagination:
+      type: object
+      description: 分页元数据
+      properties:
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 156
+
+    # === 枚举类型 ===
+
+    GradeEnum:
+      type: string
+      description: 年级枚举
+      enum: ['31', '32', '33', '34', '71', '72', '73']
+      x-enum-descriptions:
+        - 小学三年级
+        - 小学四年级
+        - 小学五年级
+        - 小学六年级
+        - 初中一年级
+        - 初中二年级
+        - 初中三年级
+
+    QuestionStatusEnum:
+      type: string
+      description: 错题状态枚举
+      enum: [NOT_STARTED, REVIEWING, MASTERED, PERMANENTLY_MASTERED]
+      x-enum-descriptions:
+        - 未掌握
+        - 复习中
+        - 已消灭
+        - 永久消灭（通过90天复活检测）
+
+    ErrorCategoryEnum:
+      type: string
+      description: 错因粗分类枚举
+      enum: [KNOWLEDGE, SKILL, PSYCHOLOGY, HABIT, UNKNOWN]
+      x-enum-descriptions:
+        - 知识性错误
+        - 技能性错误
+        - 心理性错误
+        - 习惯性错误
+        - 不确定（仅小学生，不计入统计）
+
+    SelfRatingEnum:
+      type: string
+      description: 自评结果枚举
+      enum: [MASTERED, PARTIAL, FAILED]
+      x-enum-descriptions:
+        - 完全掌握
+        - 部分记得
+        - 完全不会
+
+    DeviceTypeEnum:
+      type: string
+      description: 设备类型枚举
+      enum: [IOS, ANDROID]
+
+    SyncOperationEnum:
+      type: string
+      description: 同步操作类型
+      enum: [CREATE, UPDATE, DELETE]
+
+    SyncEntityTypeEnum:
+      type: string
+      description: 同步实体类型
+      enum: [QUESTION, REVIEW_RECORD]
+
+    ReviveResultEnum:
+      type: string
+      description: 复活检测结果
+      enum: [REMEMBERED, FORGOTTEN]
+
+    SendCodeSceneEnum:
+      type: string
+      description: 验证码发送场景
+      enum: [REGISTER, LOGIN, RESET_PASSWORD]
+
+    ImageCategoryEnum:
+      type: string
+      description: 图片上传类别
+      enum: [QUESTION, AVATAR]
+
+    # === Auth 模块 Schemas ===
+
+    SendCodeRequest:
+      type: object
+      required: [phone, scene]
+      properties:
+        phone:
+          type: string
+          pattern: '^1[3-9]\d{9}$'
+          description: 11位手机号
+          example: '13800138000'
+        scene:
+          $ref: '#/components/schemas/SendCodeSceneEnum'
+
+    SendCodeResponse:
+      type: object
+      properties:
+        expire_in:
+          type: integer
+          description: 验证码有效期（秒）
+          example: 300
+        resend_after:
+          type: integer
+          description: 重发等待时间（秒）
+          example: 60
+
+    RegisterRequest:
+      type: object
+      required: [phone, verify_code, grade, parent_consent]
+      properties:
+        phone:
+          type: string
+          pattern: '^1[3-9]\d{9}$'
+          description: 11位手机号
+        verify_code:
+          type: string
+          pattern: '^\d{6}$'
+          description: 6位数字验证码
+        grade:
+          $ref: '#/components/schemas/GradeEnum'
+        parent_consent:
+          type: boolean
+          description: 家长知情同意（FR-001-3），必须为true
+          example: true
+        nickname:
+          type: string
+          minLength: 2
+          maxLength: 12
+          description: 昵称，不填则自动生成
+
+    LoginRequest:
+      type: object
+      required: [phone, verify_code, device_name, device_type]
+      properties:
+        phone:
+          type: string
+          pattern: '^1[3-9]\d{9}$'
+          description: 手机号
+        verify_code:
+          type: string
+          pattern: '^\d{6}$'
+          description: 6位验证码
+        device_name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 设备名称
+          example: iPhone 15 Pro
+        device_type:
+          $ref: '#/components/schemas/DeviceTypeEnum'
+        push_token:
+          type: string
+          maxLength: 256
+          description: APNs/FCM推送token
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT Access Token
+        refresh_token:
+          type: string
+          description: Refresh Token
+        expires_in:
+          type: integer
+          description: Access Token有效期（秒）
+          example: 86400
+
+    AuthTokenResponse:
+      type: object
+      description: 注册/登录成功时的Token和用户信息
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          properties:
+            user_id:
+              type: integer
+              format: int64
+            user:
+              $ref: '#/components/schemas/UserBrief'
+
+    LoginResponse:
+      type: object
+      description: 登录成功响应，可能包含被踢设备信息和注销状态
+      allOf:
+        - $ref: '#/components/schemas/AuthTokenResponse'
+        - type: object
+          properties:
+            kicked_device:
+              nullable: true
+              $ref: '#/components/schemas/KickedDeviceInfo'
+            deactivation_status:
+              nullable: true
+              $ref: '#/components/schemas/DeactivationStatus'
+
+    KickedDeviceInfo:
+      type: object
+      description: 被踢出的设备信息（FR-001-6）
+      nullable: true
+      properties:
+        device_name:
+          type: string
+        device_type:
+          $ref: '#/components/schemas/DeviceTypeEnum'
+        last_login_at:
+          type: string
+          format: date-time
+
+    DeactivationStatus:
+      type: object
+      description: 注销冷静期状态（V1.1新增）
+      properties:
+        status:
+          type: string
+          example: DEACTIVATING
+        deactivated_at:
+          type: string
+          format: date-time
+        recover_before:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh Token
+
+    # === User 模块 Schemas ===
+
+    UserBrief:
+      type: object
+      description: 用户简要信息
+      properties:
+        id:
+          type: integer
+          format: int64
+        phone:
+          type: string
+          description: 脱敏手机号
+          example: '138****8000'
+        nickname:
+          type: string
+        grade:
+          $ref: '#/components/schemas/GradeEnum'
+
+    UserProfile:
+      type: object
+      description: 用户完整资料
+      properties:
+        id:
+          type: integer
+          format: int64
+        phone:
+          type: string
+          description: 脱敏手机号
+          example: '138****8000'
+        nickname:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+        grade:
+          $ref: '#/components/schemas/GradeEnum'
+        storage_used:
+          type: integer
+          format: int64
+          description: 已用存储（字节）
+        storage_limit:
+          type: integer
+          format: int64
+          description: 存储上限（字节），默认5GB
+        storage_percent:
+          type: number
+          format: float
+          description: 存储使用百分比
+        streak_days:
+          type: integer
+          description: 连续打卡天数
+        review_reminder_time:
+          type: string
+          description: 复习提醒时间 HH:mm
+          example: '19:00'
+        reminder_enabled:
+          type: boolean
+        mastered_animation:
+          type: boolean
+          description: 消灭动画开关
+        daily_review_limit:
+          type: integer
+          description: 每日复习上限
+          enum: [10, 15, 20, 25, 30]
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateProfileRequest:
+      type: object
+      description: 更新个人信息请求（所有字段选填）
+      properties:
+        nickname:
+          type: string
+          minLength: 2
+          maxLength: 12
+        avatar_url:
+          type: string
+          format: uri
+          maxLength: 512
+        grade:
+          $ref: '#/components/schemas/GradeEnum'
+        review_reminder_time:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+          description: HH:mm格式，范围18:00-22:00
+        reminder_enabled:
+          type: boolean
+        mastered_animation:
+          type: boolean
+        daily_review_limit:
+          type: integer
+          enum: [10, 15, 20, 25, 30]
+
+    DeactivateRequest:
+      type: object
+      required: [phone, verify_code]
+      properties:
+        phone:
+          type: string
+          pattern: '^1[3-9]\d{9}$'
+          description: 手机号（必须与当前用户一致）
+        verify_code:
+          type: string
+          pattern: '^\d{6}$'
+          description: 6位验证码
+
+    DeactivateResponse:
+      type: object
+      properties:
+        deactivated_at:
+          type: string
+          format: date-time
+          description: 注销申请时间
+        recover_before:
+          type: string
+          format: date-time
+          description: 冷静期截止时间
+        message:
+          type: string
+
+    # === Question 模块 Schemas ===
+
+    SolutionStep:
+      type: object
+      description: 解题步骤
+      properties:
+        step:
+          type: integer
+          description: 步骤序号
+        content:
+          type: string
+          description: 步骤内容
+        is_error:
+          type: boolean
+          description: 是否为出错步骤
+
+    KnowledgePointBrief:
+      type: object
+      description: 知识点简要信息
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        level:
+          type: integer
+          description: 层级 1/2/3
+        path:
+          type: string
+          description: 知识点路径（如"数与代数 > 小数与分数 > 分数运算"）
+
+    CreateQuestionRequest:
+      type: object
+      required: [image_url, ocr_confirmed, error_category, knowledge_point_ids]
+      properties:
+        image_url:
+          type: string
+          format: uri
+          maxLength: 512
+          description: 题目图片URL
+        ocr_text:
+          type: string
+          maxLength: 10000
+          description: OCR识别文字
+        ocr_confirmed:
+          type: boolean
+          description: OCR文字是否经用户确认
+        my_answer:
+          type: string
+          maxLength: 5000
+          description: 我的答案
+        correct_answer:
+          type: string
+          maxLength: 5000
+          description: 正确答案
+        solution_steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolutionStep'
+          description: 解题步骤数组
+        error_step_index:
+          type: integer
+          minimum: 0
+          description: 出错步骤索引
+        error_category:
+          $ref: '#/components/schemas/ErrorCategoryEnum'
+        error_sub_category:
+          type: string
+          maxLength: 32
+          description: 错因细分类
+        knowledge_point_ids:
+          type: array
+          items:
+            type: integer
+          minItems: 1
+          maxItems: 3
+          description: 关联知识点ID列表（1-3个）
+        custom_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 20
+          maxItems: 5
+          description: 自定义标签，最多5个
+
+    UpdateQuestionRequest:
+      type: object
+      description: 更新错题请求（所有字段选填，knowledge_point_ids/custom_tags为全量替换）
+      properties:
+        image_url:
+          type: string
+          format: uri
+          maxLength: 512
+        ocr_text:
+          type: string
+          maxLength: 10000
+        ocr_confirmed:
+          type: boolean
+        my_answer:
+          type: string
+          maxLength: 5000
+        correct_answer:
+          type: string
+          maxLength: 5000
+        solution_steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolutionStep'
+        error_step_index:
+          type: integer
+          minimum: 0
+        error_category:
+          $ref: '#/components/schemas/ErrorCategoryEnum'
+        error_sub_category:
+          type: string
+          maxLength: 32
+        knowledge_point_ids:
+          type: array
+          items:
+            type: integer
+          minItems: 1
+          maxItems: 3
+        custom_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 20
+          maxItems: 5
+
+    QuestionSummary:
+      type: object
+      description: 错题摘要信息（列表项）
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/QuestionStatusEnum'
+        image_url:
+          type: string
+          format: uri
+        ocr_text:
+          type: string
+        error_category:
+          $ref: '#/components/schemas/ErrorCategoryEnum'
+        error_sub_category:
+          type: string
+        review_round:
+          type: integer
+          description: 当前复习轮次(1-5)
+        next_review_date:
+          type: string
+          format: date
+        knowledge_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgePointBrief'
+        custom_tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    QuestionDetail:
+      type: object
+      description: 错题完整详情
+      allOf:
+        - $ref: '#/components/schemas/QuestionSummary'
+        - type: object
+          properties:
+            ocr_confirmed:
+              type: boolean
+            my_answer:
+              type: string
+            correct_answer:
+              type: string
+            solution_steps:
+              type: array
+              items:
+                $ref: '#/components/schemas/SolutionStep'
+            error_step_index:
+              type: integer
+            master_count:
+              type: integer
+              description: 连续掌握计数(0-3)
+            mastered_at:
+              type: string
+              format: date-time
+              nullable: true
+            revive_check_date:
+              type: string
+              format: date
+              nullable: true
+            revive_check_interval:
+              type: integer
+              enum: [30, 60, 90]
+              nullable: true
+            review_history:
+              type: array
+              items:
+                $ref: '#/components/schemas/ReviewRecord'
+            updated_at:
+              type: string
+              format: date-time
+
+    ReviewRecord:
+      type: object
+      description: 复习记录
+      properties:
+        id:
+          type: integer
+          format: int64
+        review_round:
+          type: integer
+        self_rating:
+          $ref: '#/components/schemas/SelfRatingEnum'
+        master_count_after:
+          type: integer
+          description: 本次复习后的消灭计数快照
+        review_duration_sec:
+          type: integer
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+
+    SoftDeleteResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        deleted_at:
+          type: string
+          format: date-time
+        recover_before:
+          type: string
+          format: date-time
+          description: 可恢复截止日期
+
+    RecycleBinItem:
+      type: object
+      description: 回收站中的错题项
+      allOf:
+        - $ref: '#/components/schemas/QuestionSummary'
+        - type: object
+          properties:
+            days_remaining:
+              type: integer
+              description: 剩余可恢复天数
+            deleted_at:
+              type: string
+              format: date-time
+
+    PaginatedQuestionList:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    PaginatedRecycleBinList:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecycleBinItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # === Review 模块 Schemas ===
+
+    ReviewItem:
+      type: object
+      description: 正常复习项
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum: [NORMAL]
+        image_url:
+          type: string
+          format: uri
+        ocr_text:
+          type: string
+        correct_answer:
+          type: string
+        my_answer:
+          type: string
+        solution_steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolutionStep'
+        error_category:
+          $ref: '#/components/schemas/ErrorCategoryEnum'
+        error_sub_category:
+          type: string
+        review_round:
+          type: integer
+        knowledge_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgePointBrief'
+
+    ReviveItem:
+      type: object
+      description: 复活检测项
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum: [REVIVE_CHECK]
+        label:
+          type: string
+          example: 复习巩固
+        image_url:
+          type: string
+          format: uri
+        ocr_text:
+          type: string
+        correct_answer:
+          type: string
+        mastered_at:
+          type: string
+          format: date-time
+        revive_check_interval:
+          type: integer
+          enum: [30, 60, 90]
+
+    TodayReviewResponse:
+      type: object
+      description: 今日待复习列表响应
+      properties:
+        review_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewItem'
+          description: 正常复习项，按优先级排序
+        revive_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviveItem'
+          description: 复活检测项，最多3道
+        total_count:
+          type: integer
+          description: 总复习项数
+        revive_count:
+          type: integer
+          description: 复活检测项数
+        has_more:
+          type: boolean
+          description: 是否有超出每日上限的题目
+        overflow_count:
+          type: integer
+          description: 超出每日上限的题目数量
+
+    CompleteReviewRequest:
+      type: object
+      required: [question_id, self_rating]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+          description: 错题ID
+        self_rating:
+          $ref: '#/components/schemas/SelfRatingEnum'
+        review_duration_sec:
+          type: integer
+          minimum: 0
+          description: 复习用时（秒）
+        is_revive_check:
+          type: boolean
+          default: false
+          description: 是否为复活检测
+        revive_result:
+          $ref: '#/components/schemas/ReviveResultEnum'
+          description: 复活检测结果（is_revive_check=true时必填）
+
+    CompleteReviewResponse:
+      type: object
+      description: 复习自评结果
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        new_status:
+          $ref: '#/components/schemas/QuestionStatusEnum'
+        new_review_round:
+          type: integer
+        new_master_count:
+          type: integer
+        next_review_date:
+          type: string
+          format: date
+          nullable: true
+          description: 下次复习日期，消灭后为null
+        just_mastered:
+          type: boolean
+          description: 是否刚刚触发消灭
+        total_mastered:
+          type: integer
+          description: 累计消灭总数（just_mastered=true时有值）
+        streak_days:
+          type: integer
+          description: 连续打卡天数
+        is_revive_failed:
+          type: boolean
+          description: 复活检测是否失败
+        encourage_message:
+          type: string
+          description: 鼓励消息（复活失败时返回）
+
+    ReviveCheckPreview:
+      type: object
+      properties:
+        count:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                format: int64
+              ocr_text:
+                type: string
+              mastered_at:
+                type: string
+                format: date-time
+              revive_check_interval:
+                type: integer
+                enum: [30, 60, 90]
+              check_label:
+                type: string
+
+    # === Report 模块 Schemas ===
+
+    ErrorDistributionItem:
+      type: object
+      properties:
+        category:
+          $ref: '#/components/schemas/ErrorCategoryEnum'
+        label:
+          type: string
+          description: 中文标签
+        count:
+          type: integer
+        percent:
+          type: number
+          format: float
+
+    WeeklyTrendItem:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        new_count:
+          type: integer
+        mastered_count:
+          type: integer
+
+    WeakKnowledgeItem:
+      type: object
+      properties:
+        knowledge_point_id:
+          type: integer
+        name:
+          type: string
+        unmastered_count:
+          type: integer
+        path:
+          type: string
+          description: 知识点完整路径
+
+    CalendarDayInfo:
+      type: object
+      properties:
+        has_review:
+          type: boolean
+        has_mastered:
+          type: boolean
+
+    DashboardResponse:
+      type: object
+      description: 首页Dashboard完整数据
+      properties:
+        greeting:
+          type: object
+          properties:
+            nickname:
+              type: string
+            streak_days:
+              type: integer
+        today_task:
+          type: object
+          properties:
+            pending_review_count:
+              type: integer
+            has_overflow:
+              type: boolean
+            overflow_count:
+              type: integer
+        statistics:
+          type: object
+          properties:
+            total_questions:
+              type: integer
+            mastered_count:
+              type: integer
+            elimination_rate:
+              type: number
+              format: float
+              description: 消灭率(%)
+        error_distribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDistributionItem'
+          description: 错因分布（不含UNKNOWN）
+        weekly_trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyTrendItem'
+          description: 近7天趋势
+        weak_knowledge_top:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeakKnowledgeItem'
+          description: 薄弱知识点TOP
+        calendar:
+          type: object
+          properties:
+            year:
+              type: integer
+            month:
+              type: integer
+            days:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/CalendarDayInfo'
+              description: key为YYYY-MM-DD格式的日期
+
+    WeeklyReportSummary:
+      type: object
+      description: 周报摘要（列表项）
+      properties:
+        id:
+          type: integer
+          format: int64
+        week_number:
+          type: integer
+          description: 周编号YYYYWW
+          example: 202624
+        week_start:
+          type: string
+          format: date
+        week_end:
+          type: string
+          format: date
+        new_questions:
+          type: integer
+        mastered_questions:
+          type: integer
+        review_count:
+          type: integer
+        review_accuracy:
+          type: number
+          format: float
+          description: 复习正确率(%)
+        prev_week_new:
+          type: integer
+          nullable: true
+        prev_week_mastered:
+          type: integer
+          nullable: true
+        top_error_category:
+          $ref: '#/components/schemas/ErrorCategoryEnum'
+        weak_knowledge_top:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeakKnowledgeItem'
+
+    WeeklyReportDetail:
+      type: object
+      description: 周报详情
+      allOf:
+        - $ref: '#/components/schemas/WeeklyReportSummary'
+        - type: object
+          properties:
+            achievements:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  label:
+                    type: string
+                  icon:
+                    type: string
+              description: 本周成就徽章
+            focus_knowledge:
+              type: object
+              properties:
+                knowledge_point:
+                  $ref: '#/components/schemas/KnowledgePointBrief'
+                suggestion:
+                  type: string
+                  description: 学习建议
+              description: 重点关注知识点及建议
+
+    PaginatedWeeklyReportList:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyReportSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # === Sync 模块 Schemas ===
+
+    SyncItem:
+      type: object
+      required: [local_id, entity_type, operation, payload]
+      properties:
+        local_id:
+          type: string
+          format: uuid
+          description: 本地临时ID
+        entity_type:
+          $ref: '#/components/schemas/SyncEntityTypeEnum'
+        operation:
+          $ref: '#/components/schemas/SyncOperationEnum'
+        payload:
+          type: object
+          description: 完整实体数据JSON
+
+    SyncUploadRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncItem'
+          minItems: 1
+          maxItems: 50
+
+    SyncResultItem:
+      type: object
+      properties:
+        local_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [SUCCESS, FAILED]
+        remote_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: 成功时返回远端ID
+        error_code:
+          type: integer
+          nullable: true
+          description: 失败时的业务错误码
+        error_message:
+          type: string
+          nullable: true
+
+    SyncUploadResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncResultItem'
+        success_count:
+          type: integer
+        fail_count:
+          type: integer
+
+    SyncFailedItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        entity_type:
+          $ref: '#/components/schemas/SyncEntityTypeEnum'
+        operation:
+          $ref: '#/components/schemas/SyncOperationEnum'
+        error_message:
+          type: string
+        retry_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    SyncStatusResponse:
+      type: object
+      properties:
+        pending_count:
+          type: integer
+        failed_count:
+          type: integer
+        last_sync_at:
+          type: string
+          format: date-time
+          nullable: true
+        failed_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncFailedItem'
+
+    # === Image 模块 Schemas ===
+
+    UploadUrlRequest:
+      type: object
+      required: [file_name, content_type, file_size, category]
+      properties:
+        file_name:
+          type: string
+          maxLength: 256
+          description: 文件名
+        content_type:
+          type: string
+          enum: [image/jpeg, image/png, image/heic]
+          description: 文件MIME类型
+        file_size:
+          type: integer
+          format: int64
+          maximum: 20971520
+          description: 文件大小（字节），最大20MB
+        category:
+          $ref: '#/components/schemas/ImageCategoryEnum'
+
+    UploadUrlResponse:
+      type: object
+      properties:
+        upload_url:
+          type: string
+          format: uri
+          description: OSS预签名上传URL
+        file_url:
+          type: string
+          format: uri
+          description: 上传完成后的文件访问路径
+        expires_in:
+          type: integer
+          description: 签名URL有效期（秒）
+          example: 300
+
+# ═══════════════════════════════════════════════════════════════
+# TODO 待确认事项
+# ═══════════════════════════════════════════════════════════════
+x-todo:
+  - id: TODO-001
+    description: 前端 api_endpoints.dart 中 /upload/ocr 端点在技术设计文档中无对应API定义。OCR作为内部适配器由后端调用第三方服务，不对外暴露独立接口。需确认前端是否需要独立的OCR端点，或仅通过创建错题时传入图片URL由后端异步处理。
+    affected_paths:
+      - /upload/ocr
+
+  - id: TODO-002
+    description: 前端定义了 /sync/push 和 /sync/pull 两个端点，但技术设计文档中对应的是 /sync/upload（上传）、/sync/status（状态查询）和 /sync/retry（重试）。当前OpenAPI以文档为准。需确认前端 pull 的实际用途——是拉取远端变更还是查询同步状态。
+    affected_paths:
+      - /sync/push
+      - /sync/pull
+
+  - id: TODO-003
+    description: 前端 /questions/{id}/permanent（永久删除单个错题）在技术设计文档中未定义独立端点，仅有清空回收站的批量操作。需确认是否需要单独的永久删除接口。
+    affected_paths:
+      - /questions/{id}/permanent
+
+  - id: TODO-004
+    description: 前端 /reviews/queue 和 /reviews/result 路径与技术设计文档中的 /reviews/today 和 /reviews/complete 不一致。当前OpenAPI以文档路径为准，已通过 x-frontend-path 标注前端实际路径。需统一前后端路径命名。
+    affected_paths:
+      - /reviews/queue
+      - /reviews/result
+
+  - id: TODO-005
+    description: 前端 /users/me 和 /users/me/settings 与技术设计文档中的 /users/profile 不一致。/users/me/deactivate 对应文档中的 /users/deactivate。需统一。
+    affected_paths:
+      - /users/me
+      - /users/me/settings
+      - /users/me/deactivate
+
+  - id: TODO-006
+    description: 周报详情中的 achievements 数组结构和 focus_knowledge.suggestion 字段的具体内容由产品侧定义，当前schema基于合理推断。需PRD补充确认。
+    affected_schemas:
+      - WeeklyReportDetail
+
+  - id: TODO-007
+    description: 前端 /auth/otp/send 和 /auth/otp/verify 路径与技术设计文档中的 /auth/send-code 不一致，且文档中验证码验证融合在注册/登录接口中，无独立verify端点。需确认前端是否需要独立的验证码校验接口。
+    affected_paths:
+      - /auth/otp/send
+      - /auth/otp/verify
