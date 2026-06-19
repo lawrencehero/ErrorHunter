@@ -87,7 +87,8 @@ func (r *QuestionRepository) List(ctx context.Context, filter ListFilter) (*List
 		query = query.Where("created_at >= ?", *filter.StartDate)
 	}
 	if filter.EndDate != nil {
-		query = query.Where("created_at <= ?", *filter.EndDate.Add(24*time.Hour))
+		endDate := filter.EndDate.Add(24 * time.Hour)
+		query = query.Where("created_at <= ?", endDate)
 	}
 	if filter.Keyword != "" {
 		query = query.Where("ocr_text ILIKE ?", "%"+filter.Keyword+"%")

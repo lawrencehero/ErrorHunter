@@ -333,7 +333,7 @@ func (s *QuestionService) ApplyDailyLimit(questions []model.Question, limit int)
 		}
 	}
 
-	todayCandidates, deferredCandidates := scheduler.ApplyDailyLimit(candidates, limit)
+	todayCandidates, _ := scheduler.ApplyDailyLimit(candidates, limit)
 
 	todayMap := make(map[int64]bool)
 	for _, c := range todayCandidates {

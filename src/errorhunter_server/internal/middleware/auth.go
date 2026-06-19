@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
