@@ -3,7 +3,7 @@
 # 生成日期：2026-06-19
 # 来源：以前端 api_endpoints.dart 为唯一权威路径来源
 # 说明：所有 paths 已与 src/errorhunter_app/lib/data/remote/api_endpoints.dart 对齐
-#       achievements 相关 schema 已标记 x-deferred，待 PM 确认
+#       achievements 相关 schema 已由 PM 确认（见 achievements-schema.md）
 # =============================================================================
 
 openapi: 3.0.3
@@ -2306,37 +2306,59 @@ components:
             $ref: '#/components/schemas/WeakKnowledgeItem'
 
     WeeklyReportDetail:
-      x-deferred: pending PM confirmation
       description: |
-        周报详情。achievements 数组结构和 focus_knowledge.suggestion 字段
-        的具体内容由产品侧定义，当前 schema 基于合理推断，待 PRD 补充确认。
+        周报详情。achievements 为本周成就动态文案片段（非独立徽章系统），
+        由服务端根据本周数据实时计算生成，最多3条；focus_knowledge.suggestion
+        为基于薄弱知识点的固定模板建议文案。结构已由 PM 确认（见 achievements-schema.md）。
       type: object
       allOf:
         - $ref: '#/components/schemas/WeeklyReportSummary'
         - type: object
           properties:
             achievements:
-              x-deferred: pending PM confirmation
               type: array
+              maxItems: 3
               items:
                 type: object
+                required: [type, title, description, icon]
                 properties:
                   type:
                     type: string
-                  label:
+                    description: 成就类型标识，用于客户端选择样式/图标
+                    enum:
+                      - STREAK_7
+                      - STREAK_30
+                      - MASTERED_10
+                      - MASTERED_20
+                      - ACCURACY_75
+                      - ACCURACY_90
+                      - REVIEW_30
+                      - NEW_10
+                      - IMPROVE
+                      - FIRST_MASTER
+                  title:
                     type: string
+                    description: 成就标题，如"连续打卡7天"
+                  description:
+                    type: string
+                    description: 成就描述/鼓励语，如"坚持就是胜利！"
                   icon:
                     type: string
-              description: 本周成就徽章（待PM确认具体结构）
+                    description: Emoji图标，如 🔥🎯⭐
+              description: |
+                本周成就动态文案片段（非独立徽章系统），由服务端根据本周数据实时计算生成。
+                按优先级排序取前3条命中的；若本周无命中则返回空数组。不持久化。
             focus_knowledge:
               type: object
               properties:
                 knowledge_point:
                   $ref: '#/components/schemas/KnowledgePointBrief'
                 suggestion:
-                  x-deferred: pending PM confirmation
                   type: string
-                  description: 学习建议（待PM确认具体内容规则）
+                  description: |
+                    基于薄弱知识点的固定模板建议文案。
+                    模板："建议重点复习「{知识点名称}」，本周有{n}道相关错题未消灭"。
+                    取 weak_knowledge_top[0] 的名称和未消灭数拼接生成。V1.0 不做 AI 个性化建议。
               description: 重点关注知识点及建议
 
     PaginatedWeeklyReportList:
