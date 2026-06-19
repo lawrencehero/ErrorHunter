@@ -1,0 +1,127 @@
+/// 错题猎手 - Question BLoC States
+library;
+
+import 'package:equatable/equatable.dart';
+import '../models/question_model.dart';
+
+/// Question State 基类
+abstract class QuestionState extends Equatable {
+  const QuestionState();
+
+  @override
+  List<Object?> get props => [];
+}
+
+// ─── List States ──────────────────────────────────────────────
+
+/// 列表初始态
+class QuestionListInitial extends QuestionState {
+  const QuestionListInitial();
+}
+
+/// 列表加载中
+class QuestionListLoading extends QuestionState {
+  const QuestionListLoading();
+}
+
+/// 列表已加载
+class QuestionListLoaded extends QuestionState {
+  const QuestionListLoaded({
+    required this.questions,
+    this.hasMore = false,
+    this.currentPage = 1,
+    this.filterStatus,
+    this.filterCategory,
+    this.searchKeyword = '',
+  });
+
+  final List<QuestionModel> questions;
+  final bool hasMore;
+  final int currentPage;
+  final QuestionStatus? filterStatus;
+  final ErrorCategory? filterCategory;
+  final String searchKeyword;
+
+  @override
+  List<Object?> get props => [
+        questions.length,
+        hasMore,
+        currentPage,
+        filterStatus,
+        filterCategory,
+        searchKeyword,
+      ];
+}
+
+// ─── Detail States ────────────────────────────────────────────
+
+/// 详情加载中
+class QuestionDetailLoading extends QuestionState {
+  const QuestionDetailLoading();
+}
+
+/// 详情已加载
+class QuestionDetailLoaded extends QuestionState {
+  const QuestionDetailLoaded(this.question);
+
+  final QuestionModel question;
+
+  @override
+  List<Object?> get props => [question.id];
+}
+
+// ─── Add States ───────────────────────────────────────────────
+
+/// 正在添加错题
+class QuestionAdding extends QuestionState {
+  const QuestionAdding();
+}
+
+/// 添加成功
+class QuestionAdded extends QuestionState {
+  const QuestionAdded(this.question);
+
+  final QuestionModel question;
+
+  @override
+  List<Object?> get props => [question.id];
+}
+
+// ─── OCR States ───────────────────────────────────────────────
+
+/// OCR 识别中
+class OcrProcessing extends QuestionState {
+  const OcrProcessing();
+}
+
+/// OCR 识别完成
+class OcrCompleted extends QuestionState {
+  const OcrCompleted(this.text);
+
+  final String text;
+
+  @override
+  List<Object?> get props => [text];
+}
+
+/// OCR 识别失败
+class OcrFailed extends QuestionState {
+  const OcrFailed([this.message = '识别失败，请手动输入题目内容']);
+
+  final String message;
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// ─── Error State ──────────────────────────────────────────────
+
+/// 通用错误
+class QuestionError extends QuestionState {
+  const QuestionError(this.message);
+
+  final String message;
+
+  @override
+  List<Object?> get props => [message];
+}

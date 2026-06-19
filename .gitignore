@@ -1,0 +1,37 @@
+# Open Design reference (cloned for design system research, not part of the project)
+.open-design/
+
+# Temporary scratch scripts
+tmp_merge.py
+
+# Flutter logs
+flutter_*.log
+
+# Flutter
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
+**/pubspec.lock
+**/*.g.dart
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Test coverage
+coverage/

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方案A - 玻璃拟态 Glassmorphism</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { display:flex; justify-content:center; align-items:center; min-height:100vh; background:#1a1a2e; font-family: -apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif; }
+
+.phone {
+  width: 390px; height: 844px; border-radius: 44px; overflow: hidden;
+  position: relative;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  box-shadow: 0 25px 80px rgba(0,0,0,0.5);
+}
+
+/* 背景装饰球 */
+.bg-orb {
+  position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.4;
+}
+.orb1 { width:200px; height:200px; background:#4F6EF7; top:-50px; right:-40px; }
+.orb2 { width:160px; height:160px; background:#FF8C42; bottom:120px; left:-40px; }
+.orb3 { width:120px; height:120px; background:#34C759; top:300px; right:-20px; }
+
+.content { position:relative; z-index:1; height:100%; display:flex; flex-direction:column; padding: 50px 20px 0; }
+
+/* 顶栏 */
+.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.greeting { color:#fff; font-size:22px; font-weight:700; text-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.topbar-icons { display:flex; gap:10px; }
+.topbar-icon {
+  width:36px; height:36px; border-radius:50%;
+  background: rgba(255,255,255,0.15); backdrop-filter: blur(10px);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-size:16px;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* 玻璃卡片基础 */
+.glass {
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.18);
+  padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+}
+
+/* 打卡条 */
+.streak { display:flex; align-items:center; gap:12px; }
+.streak-fire { font-size:28px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+.streak-text { color:#fff; font-weight:600; font-size:16px; flex:1; }
+.streak-num { font-size:28px; font-weight:800; color:#FFB07A; }
+.streak-bar { height:6px; border-radius:3px; background:rgba(255,255,255,0.15); margin-top:8px; }
+.streak-fill { height:100%; width:65%; border-radius:3px; background:linear-gradient(90deg,#FF8C42,#FFB07A); }
+
+/* 今日任务 */
+.task-label { color:rgba(255,255,255,0.7); font-size:13px; font-weight:500; margin-bottom:8px; }
+.task-row { display:flex; align-items:flex-end; gap:8px; margin-bottom:14px; }
+.task-num { font-size:48px; font-weight:800; color:#fff; line-height:1; }
+.task-desc { color:rgba(255,255,255,0.8); font-size:16px; font-weight:500; padding-bottom:6px; }
+.task-btn {
+  width:100%; padding:14px; border:none; border-radius:14px;
+  background: linear-gradient(135deg, #4F6EF7, #7B93FF);
+  color:#fff; font-size:16px; font-weight:700; cursor:pointer;
+  box-shadow: 0 4px 15px rgba(79,110,247,0.4);
+  display:flex; align-items:center; justify-content:center; gap:6px;
+}
+
+/* 统计行 */
+.stats { display:flex; gap:10px; }
+.stat-card {
+  flex:1; padding:14px; text-align:center;
+  background: rgba(255,255,255,0.1); backdrop-filter: blur(16px);
+  border-radius:16px; border: 1px solid rgba(255,255,255,0.15);
+}
+.stat-num { font-size:26px; font-weight:800; color:#fff; }
+.stat-label { font-size:11px; color:rgba(255,255,255,0.6); margin-top:2px; }
+.stat-trend { font-size:10px; color:#34C759; margin-top:4px; }
+
+/* 薄弱知识点 */
+.section-title { color:#fff; font-size:16px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.kp-item { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.kp-rank { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; }
+.kp-name { flex:1; color:rgba(255,255,255,0.9); font-size:14px; font-weight:500; }
+.kp-bar { flex:1; height:5px; border-radius:3px; background:rgba(255,255,255,0.1); }
+.kp-bar-fill { height:100%; border-radius:3px; }
+.kp-count { color:rgba(255,255,255,0.6); font-size:12px; font-weight:600; min-width:36px; text-align:right; }
+
+/* 底部导航 */
+.bottom-nav {
+  position:absolute; bottom:0; left:0; right:0; height:80px;
+  background: rgba(255,255,255,0.08); backdrop-filter: blur(24px);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  display:flex; align-items:center; justify-content:space-around;
+  padding: 0 10px 16px;
+}
+.nav-item { display:flex; flex-direction:column; align-items:center; gap:3px; }
+.nav-icon { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; color:rgba(255,255,255,0.5); }
+.nav-icon.active { background:rgba(79,110,247,0.3); color:#7B93FF; }
+.nav-label { font-size:10px; color:rgba(255,255,255,0.5); }
+.nav-label.active { color:#7B93FF; font-weight:600; }
+.fab {
+  width:56px; height:56px; border-radius:50%;
+  background: linear-gradient(135deg, #4F6EF7, #7B93FF);
+  display:flex; align-items:center; justify-content:center;
+  font-size:28px; color:#fff; margin-top:-28px;
+  box-shadow: 0 4px 20px rgba(79,110,247,0.5);
+  border: 3px solid rgba(255,255,255,0.2);
+}
+
+.label-tag {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  background:#333; color:#fff; padding:8px 24px; border-radius:20px;
+  font-size:14px; font-weight:600; z-index:999;
+}
+</style>
+</head>
+<body>
+<div class="label-tag">方案 A — 玻璃拟态 Glassmorphism</div>
+<div class="phone">
+  <div class="bg-orb orb1"></div>
+  <div class="bg-orb orb2"></div>
+  <div class="bg-orb orb3"></div>
+  <div class="content">
+    <!-- 顶栏 -->
+    <div class="topbar">
+      <div class="greeting">Hi，小明 👋</div>
+      <div class="topbar-icons">
+        <div class="topbar-icon">☁</div>
+        <div class="topbar-icon">🔔</div>
+      </div>
+    </div>
+
+    <!-- 打卡条 -->
+    <div class="glass streak">
+      <span class="streak-fire">🔥</span>
+      <span class="streak-text">连续打卡</span>
+      <span class="streak-num">12</span>
+      <span class="streak-text">天</span>
+      <span style="font-size:20px">🏆</span>
+    </div>
+    <div style="padding:0 4px;margin:-8px 0 14px">
+      <div class="streak-bar"><div class="streak-fill"></div></div>
+    </div>
+
+    <!-- 今日任务 -->
+    <div class="glass">
+      <div class="task-label">📝 今日任务</div>
+      <div class="task-row">
+        <div class="task-num">8</div>
+        <div class="task-desc">道错题等你复习</div>
+      </div>
+      <button class="task-btn">▶ 开始复习</button>
+    </div>
+
+    <!-- 统计 -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-num">156</div>
+        <div class="stat-label">累计错题</div>
+        <div class="stat-trend">↑ 12</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="color:#34C759">98</div>
+        <div class="stat-label">已消灭</div>
+        <div class="stat-trend">↑ 5</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="color:#FFB07A">63%</div>
+        <div class="stat-label">消灭率</div>
+        <div class="stat-trend">↑ 3%</div>
+      </div>
+    </div>
+
+    <!-- 薄弱知识点 -->
+    <div style="margin-top:16px">
+      <div class="section-title">⚠️ 薄弱知识点</div>
+      <div class="kp-item">
+        <div class="kp-rank" style="background:rgba(108,92,231,0.4)">1</div>
+        <div class="kp-name">分数加减法</div>
+        <div class="kp-bar"><div class="kp-bar-fill" style="width:100%;background:#6C5CE7"></div></div>
+        <div class="kp-count">12题</div>
+      </div>
+      <div class="kp-item">
+        <div class="kp-rank" style="background:rgba(9,132,227,0.4)">2</div>
+        <div class="kp-name">几何面积</div>
+        <div class="kp-bar"><div class="kp-bar-fill" style="width:66%;background:#0984E3"></div></div>
+        <div class="kp-count">8题</div>
+      </div>
+      <div class="kp-item">
+        <div class="kp-rank" style="background:rgba(225,112,85,0.4)">3</div>
+        <div class="kp-name">应用题审题</div>
+        <div class="kp-bar"><div class="kp-bar-fill" style="width:50%;background:#E17055"></div></div>
+        <div class="kp-count">6题</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部导航 -->
+  <div class="bottom-nav">
+    <div class="nav-item"><div class="nav-icon active">🏠</div><div class="nav-label active">首页</div></div>
+    <div class="nav-item"><div class="nav-icon">📚</div><div class="nav-label">错题本</div></div>
+    <div class="fab">＋</div>
+    <div class="nav-item"><div class="nav-icon">📊</div><div class="nav-label">周报</div></div>
+    <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">我的</div></div>
+  </div>
+</div>
+</body>
+</html>

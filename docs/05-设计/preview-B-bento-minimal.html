@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方案B - 极简 Bento 便当盒</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { display:flex; justify-content:center; align-items:center; min-height:100vh; background:#e8e8e8; font-family: -apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif; }
+
+.phone {
+  width: 390px; height: 844px; border-radius: 44px; overflow: hidden;
+  position: relative; background: #F5F5F7; box-shadow: 0 25px 80px rgba(0,0,0,0.2);
+}
+.content { height:100%; display:flex; flex-direction:column; padding: 54px 16px 0; overflow-y:auto; }
+.content::-webkit-scrollbar { display:none; }
+
+/* 顶栏 */
+.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.greeting { font-size:26px; font-weight:800; color:#1D1D1F; letter-spacing:-0.5px; }
+.topbar-right { display:flex; gap:8px; align-items:center; }
+.sync-dot { width:8px; height:8px; border-radius:50%; background:#34C759; }
+.notif { font-size:20px; position:relative; }
+.notif-badge { position:absolute; top:-2px; right:-4px; width:8px; height:8px; border-radius:50%; background:#FF3B30; border:2px solid #F5F5F7; }
+
+/* Bento Grid */
+.bento { display:grid; gap:10px; }
+.bento-row { display:flex; gap:10px; }
+
+/* 卡片基础 */
+.card {
+  background: #FFFFFF; border-radius:16px;
+  border: 1px solid #E5E5EA; padding:16px;
+}
+
+/* 打卡条 - 极简 */
+.streak-card {
+  display:flex; align-items:center; gap:10px;
+  background:#FFF8F0; border:1px solid #FFD8B8;
+}
+.streak-icon { font-size:24px; }
+.streak-info { flex:1; }
+.streak-text { font-size:14px; color:#1D1D1F; font-weight:600; }
+.streak-sub { font-size:12px; color:#8E8E93; margin-top:2px; }
+.streak-badge {
+  padding:4px 10px; border-radius:20px; font-size:13px; font-weight:700;
+  background:#FF8C42; color:#fff;
+}
+
+/* 统计卡片 */
+.stat { flex:1; text-align:left; }
+.stat-icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; margin-bottom:10px; }
+.stat-num { font-size:30px; font-weight:800; color:#1D1D1F; letter-spacing:-1px; line-height:1; }
+.stat-label { font-size:11px; color:#8E8E93; margin-top:4px; font-weight:500; }
+.stat-trend { display:inline-flex; align-items:center; gap:2px; font-size:10px; font-weight:600; padding:2px 6px; border-radius:10px; margin-top:6px; }
+.trend-up { background:#E8F8EE; color:#34C759; }
+.trend-warm { background:#FFF3E0; color:#FF8C42; }
+
+/* 今日任务 - 大卡片 */
+.task-card { padding:20px; }
+.task-tag { display:inline-block; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600; background:#EEF1FE; color:#4F6EF7; margin-bottom:12px; }
+.task-row { display:flex; align-items:flex-end; gap:6px; margin-bottom:16px; }
+.task-num { font-size:52px; font-weight:800; color:#4F6EF7; line-height:0.9; letter-spacing:-2px; }
+.task-desc { font-size:16px; color:#1D1D1F; font-weight:500; padding-bottom:8px; }
+.task-btn {
+  width:100%; padding:14px; border:none; border-radius:12px;
+  background:#4F6EF7; color:#fff; font-size:15px; font-weight:700;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;
+}
+
+/* 薄弱知识点 */
+.section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.section-title { font-size:16px; font-weight:700; color:#1D1D1F; }
+.section-more { font-size:12px; color:#4F6EF7; font-weight:600; }
+.kp-item { display:flex; align-items:center; gap:10px; padding:10px 0; }
+.kp-item + .kp-item { border-top: 1px solid #F2F2F7; }
+.kp-dot { width:8px; height:8px; border-radius:50%; }
+.kp-name { flex:1; font-size:14px; color:#1D1D1F; font-weight:500; }
+.kp-bar-wrap { width:80px; height:4px; border-radius:2px; background:#F2F2F7; }
+.kp-bar-fill { height:100%; border-radius:2px; }
+.kp-count { font-size:12px; color:#8E8E93; font-weight:600; min-width:32px; text-align:right; }
+
+/* 周打卡 */
+.week-card { padding:16px; }
+.week-row { display:flex; justify-content:space-between; margin-top:12px; }
+.week-day { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.week-label { font-size:11px; color:#8E8E93; font-weight:500; }
+.week-dot { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
+.dot-done { background:#34C759; color:#fff; }
+.dot-today { border:2.5px solid #4F6EF7; background:#EEF1FE; }
+.dot-empty { background:#F2F2F7; border:1.5px solid #E5E5EA; }
+
+/* 底部导航 */
+.bottom-nav {
+  position:absolute; bottom:0; left:0; right:0; height:76px;
+  background:#FFFFFF; border-top:1px solid #E5E5EA;
+  display:flex; align-items:center; justify-content:space-around;
+  padding:0 10px 14px;
+}
+.nav-item { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.nav-icon { font-size:22px; }
+.nav-label { font-size:10px; color:#8E8E93; font-weight:500; }
+.nav-label.active { color:#4F6EF7; font-weight:700; }
+.fab {
+  width:52px; height:52px; border-radius:50%; background:#4F6EF7;
+  display:flex; align-items:center; justify-content:center;
+  font-size:26px; color:#fff; margin-top:-26px;
+  box-shadow: 0 4px 12px rgba(79,110,247,0.3);
+}
+
+.label-tag {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  background:#1D1D1F; color:#fff; padding:8px 24px; border-radius:20px;
+  font-size:14px; font-weight:600; z-index:999;
+}
+</style>
+</head>
+<body>
+<div class="label-tag">方案 B — 极简 Bento 便当盒</div>
+<div class="phone">
+  <div class="content">
+    <!-- 顶栏 -->
+    <div class="topbar">
+      <div class="greeting">Hi，小明 👋</div>
+      <div class="topbar-right">
+        <div class="sync-dot"></div>
+        <div class="notif">🔔<div class="notif-badge"></div></div>
+      </div>
+    </div>
+
+    <div class="bento">
+      <!-- 打卡条 -->
+      <div class="card streak-card">
+        <span class="streak-icon">🔥</span>
+        <div class="streak-info">
+          <div class="streak-text">连续打卡 12 天</div>
+          <div class="streak-sub">距下一里程碑还差 3 天</div>
+        </div>
+        <div class="streak-badge">12天</div>
+      </div>
+
+      <!-- 统计行 -->
+      <div class="bento-row">
+        <div class="card stat">
+          <div class="stat-icon" style="background:#EEF1FE">📚</div>
+          <div class="stat-num">156</div>
+          <div class="stat-label">累计错题</div>
+          <div class="stat-trend trend-up">↑ 12</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-icon" style="background:#E8F8EE">🏆</div>
+          <div class="stat-num" style="color:#34C759">98</div>
+          <div class="stat-label">已消灭</div>
+          <div class="stat-trend trend-up">↑ 5</div>
+        </div>
+        <div class="card stat">
+          <div class="stat-icon" style="background:#FFF3E0">📊</div>
+          <div class="stat-num" style="color:#FF8C42">63%</div>
+          <div class="stat-label">消灭率</div>
+          <div class="stat-trend trend-warm">↑ 3%</div>
+        </div>
+      </div>
+
+      <!-- 今日任务 -->
+      <div class="card task-card">
+        <div class="task-tag">📝 今日任务</div>
+        <div class="task-row">
+          <div class="task-num">8</div>
+          <div class="task-desc">道错题等你复习</div>
+        </div>
+        <button class="task-btn">▶ 开始复习</button>
+      </div>
+
+      <!-- 薄弱知识点 -->
+      <div class="card">
+        <div class="section-head">
+          <div class="section-title">⚠️ 薄弱知识点</div>
+          <div class="section-more">查看全部 →</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-dot" style="background:#6C5CE7"></div>
+          <div class="kp-name">分数加减法</div>
+          <div class="kp-bar-wrap"><div class="kp-bar-fill" style="width:100%;background:#6C5CE7"></div></div>
+          <div class="kp-count">12题</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-dot" style="background:#0984E3"></div>
+          <div class="kp-name">几何面积</div>
+          <div class="kp-bar-wrap"><div class="kp-bar-fill" style="width:66%;background:#0984E3"></div></div>
+          <div class="kp-count">8题</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-dot" style="background:#E17055"></div>
+          <div class="kp-name">应用题审题</div>
+          <div class="kp-bar-wrap"><div class="kp-bar-fill" style="width:50%;background:#E17055"></div></div>
+          <div class="kp-count">6题</div>
+        </div>
+      </div>
+
+      <!-- 本周打卡 -->
+      <div class="card week-card">
+        <div class="section-head">
+          <div class="section-title">📅 本周打卡</div>
+          <div class="section-more">5/7</div>
+        </div>
+        <div class="week-row">
+          <div class="week-day"><div class="week-label">一</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">二</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">三</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">四</div><div class="week-dot dot-empty"></div></div>
+          <div class="week-day"><div class="week-label" style="color:#4F6EF7;font-weight:700">五</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">六</div><div class="week-dot dot-today"></div></div>
+          <div class="week-day"><div class="week-label">日</div><div class="week-dot dot-empty"></div></div>
+        </div>
+      </div>
+    </div>
+    <div style="height:90px"></div>
+  </div>
+
+  <!-- 底部导航 -->
+  <div class="bottom-nav">
+    <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label active">首页</div></div>
+    <div class="nav-item"><div class="nav-icon">📚</div><div class="nav-label">错题本</div></div>
+    <div class="fab">＋</div>
+    <div class="nav-item"><div class="nav-icon">📊</div><div class="nav-label">周报</div></div>
+    <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">我的</div></div>
+  </div>
+</div>
+</body>
+</html>

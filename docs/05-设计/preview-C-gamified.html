@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方案C - 游戏化 Gamified</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { display:flex; justify-content:center; align-items:center; min-height:100vh; background:#2d2d2d; font-family: -apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif; }
+
+.phone {
+  width: 390px; height: 844px; border-radius: 44px; overflow: hidden;
+  position: relative; background: #FFFFFF;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.3);
+}
+.content { height:100%; overflow-y:auto; padding-bottom:90px; }
+.content::-webkit-scrollbar { display:none; }
+
+/* 背景图案 - 微妙波点 */
+.bg-pattern {
+  position:absolute; top:0; left:0; right:0; height:360px;
+  background: #4F6EF7;
+  background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px);
+  background-size: 16px 16px;
+  border-radius: 0 0 32px 32px;
+}
+
+.content-inner { position:relative; z-index:1; padding: 54px 16px 0; }
+
+/* 顶栏 */
+.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.greeting { font-size:24px; font-weight:800; color:#fff; }
+.streak-pill {
+  display:flex; align-items:center; gap:6px;
+  padding:6px 14px; border-radius:20px;
+  background: rgba(255,255,255,0.2);
+  border: 2px solid rgba(255,255,255,0.3);
+  color:#fff; font-weight:800; font-size:15px;
+}
+.streak-pill .fire { font-size:18px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
+
+/* 打卡条 - 3D厚实 */
+.streak-card {
+  background: linear-gradient(135deg, #FF8C42, #FFB07A);
+  border-radius:20px; padding:16px 18px; margin-bottom:14px;
+  border-bottom: 4px solid #E6732E;
+  display:flex; align-items:center; gap:12px;
+}
+.streak-fire-big { font-size:32px; animation: pulse 1.6s ease-in-out infinite; }
+.streak-mid { flex:1; }
+.streak-label { color:rgba(255,255,255,0.85); font-size:13px; font-weight:600; }
+.streak-big-num { font-size:36px; font-weight:800; color:#fff; line-height:1; }
+.streak-unit { color:#fff; font-size:16px; font-weight:700; }
+.streak-progress { height:8px; border-radius:4px; background:rgba(255,255,255,0.25); margin-top:6px; }
+.streak-progress-fill { height:100%; width:65%; border-radius:4px; background:#fff; }
+.trophy { font-size:28px; }
+
+/* 今日任务 - 大数字 */
+.task-card {
+  background:#fff; border-radius:20px; padding:20px;
+  border-bottom: 4px solid #3A56D4; margin-bottom:14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.task-tag { display:inline-block; padding:5px 12px; border-radius:20px; font-size:12px; font-weight:700; background:#EEF1FE; color:#4F6EF7; margin-bottom:12px; }
+.task-row { display:flex; align-items:flex-end; gap:8px; margin-bottom:16px; }
+.task-num { font-size:56px; font-weight:800; color:#4F6EF7; line-height:0.85; letter-spacing:-2px; }
+.task-desc { font-size:18px; font-weight:600; color:#1A1A2E; padding-bottom:10px; }
+.task-btn {
+  width:100%; padding:16px; border:none; border-radius:16px;
+  background: linear-gradient(135deg, #4F6EF7, #7B93FF);
+  color:#fff; font-size:17px; font-weight:800; cursor:pointer;
+  border-bottom: 4px solid #3A56D4;
+  letter-spacing: 0.5px;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.task-btn:active { transform:translateY(4px); border-bottom-width:0; }
+
+/* 统计行 - chunky卡片 */
+.stats { display:flex; gap:10px; margin-bottom:14px; }
+.stat-card {
+  flex:1; background:#fff; border-radius:16px; padding:14px 12px;
+  border-bottom: 3px solid #E5E7EB; text-align:center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.stat-num { font-size:28px; font-weight:800; color:#1A1A2E; letter-spacing:-1px; }
+.stat-label { font-size:11px; color:#6B7280; margin-top:4px; font-weight:500; }
+.stat-card:nth-child(2) .stat-num { color:#34C759; }
+.stat-card:nth-child(3) .stat-num { color:#FF8C42; }
+
+/* 薄弱知识点 */
+.section-card {
+  background:#fff; border-radius:20px; padding:18px;
+  border-bottom: 3px solid #E5E7EB;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  margin-bottom:14px;
+}
+.section-head { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.section-icon { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.section-title { font-size:17px; font-weight:700; color:#1A1A2E; }
+
+.kp-item { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.kp-rank { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:#fff; }
+.kp-info { flex:1; }
+.kp-name { font-size:14px; font-weight:600; color:#1A1A2E; margin-bottom:4px; }
+.kp-bar { height:8px; border-radius:4px; background:#F2F2F7; }
+.kp-bar-fill { height:100%; border-radius:4px; }
+.kp-count { font-size:13px; font-weight:700; min-width:36px; text-align:right; }
+
+/* 周打卡 */
+.week-row { display:flex; justify-content:space-between; }
+.week-day { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.week-label { font-size:12px; color:#9CA3AF; font-weight:600; }
+.week-dot { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; }
+.dot-done { background:linear-gradient(135deg,#34C759,#66D97A); color:#fff; box-shadow: 0 3px 0 #28A745; }
+.dot-today { border:3px solid #4F6EF7; background:#EEF1FE; color:#4F6EF7; }
+.dot-empty { background:#F2F2F7; border:2px solid #E5E7EB; color:#D1D5DB; }
+
+/* 底部导航 */
+.bottom-nav {
+  position:absolute; bottom:0; left:0; right:0; height:78px;
+  background:#fff; border-top:2px solid #E5E7EB;
+  display:flex; align-items:center; justify-content:space-around;
+  padding:0 10px 14px;
+}
+.nav-item { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.nav-icon { font-size:22px; }
+.nav-label { font-size:10px; color:#9CA3AF; font-weight:600; }
+.nav-label.active { color:#4F6EF7; font-weight:800; }
+.fab {
+  width:60px; height:60px; border-radius:50%;
+  background: linear-gradient(135deg, #4F6EF7, #7B93FF);
+  display:flex; align-items:center; justify-content:center;
+  font-size:30px; color:#fff; margin-top:-30px;
+  border-bottom: 4px solid #3A56D4;
+  box-shadow: 0 4px 16px rgba(79,110,247,0.4);
+}
+
+.label-tag {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  background:#4F6EF7; color:#fff; padding:8px 24px; border-radius:20px;
+  font-size:14px; font-weight:600; z-index:999;
+}
+</style>
+</head>
+<body>
+<div class="label-tag">方案 C — 游戏化 Gamified (Duolingo 风格)</div>
+<div class="phone">
+  <div class="bg-pattern"></div>
+  <div class="content">
+    <div class="content-inner">
+      <!-- 顶栏 -->
+      <div class="topbar">
+        <div class="greeting">Hi，小明 👋</div>
+        <div class="streak-pill"><span class="fire">🔥</span> 12天</div>
+      </div>
+
+      <!-- 打卡条 -->
+      <div class="streak-card">
+        <div class="streak-fire-big">🔥</div>
+        <div class="streak-mid">
+          <div class="streak-label">连续打卡</div>
+          <div><span class="streak-big-num">12</span> <span class="streak-unit">天</span></div>
+          <div class="streak-progress"><div class="streak-progress-fill"></div></div>
+        </div>
+        <div class="trophy">🏆</div>
+      </div>
+
+      <!-- 今日任务 -->
+      <div class="task-card">
+        <div class="task-tag">📝 今日任务</div>
+        <div class="task-row">
+          <div class="task-num">8</div>
+          <div class="task-desc">道错题等你复习</div>
+        </div>
+        <button class="task-btn">▶ 开始复习</button>
+      </div>
+
+      <!-- 统计 -->
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-num">156</div>
+          <div class="stat-label">累计错题</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">98</div>
+          <div class="stat-label">已消灭</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">63%</div>
+          <div class="stat-label">消灭率</div>
+        </div>
+      </div>
+
+      <!-- 薄弱知识点 -->
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-icon" style="background:#FFF3E0">⚠️</div>
+          <div class="section-title">薄弱知识点</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-rank" style="background:#6C5CE7">1</div>
+          <div class="kp-info">
+            <div class="kp-name">分数加减法</div>
+            <div class="kp-bar"><div class="kp-bar-fill" style="width:100%;background:linear-gradient(90deg,#6C5CE7,#A29BFE)"></div></div>
+          </div>
+          <div class="kp-count" style="color:#6C5CE7">12题</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-rank" style="background:#0984E3">2</div>
+          <div class="kp-info">
+            <div class="kp-name">几何面积计算</div>
+            <div class="kp-bar"><div class="kp-bar-fill" style="width:66%;background:linear-gradient(90deg,#0984E3,#74B9FF)"></div></div>
+          </div>
+          <div class="kp-count" style="color:#0984E3">8题</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-rank" style="background:#E17055">3</div>
+          <div class="kp-info">
+            <div class="kp-name">应用题审题</div>
+            <div class="kp-bar"><div class="kp-bar-fill" style="width:50%;background:linear-gradient(90deg,#E17055,#FAB1A0)"></div></div>
+          </div>
+          <div class="kp-count" style="color:#E17055">6题</div>
+        </div>
+      </div>
+
+      <!-- 本周打卡 -->
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-icon" style="background:#EEF1FE">📅</div>
+          <div class="section-title">本周打卡</div>
+          <span style="flex:1"></span>
+          <span style="font-size:13px;font-weight:700;color:#6B7280">5/7</span>
+        </div>
+        <div class="week-row">
+          <div class="week-day"><div class="week-label">一</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">二</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">三</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">四</div><div class="week-dot dot-empty"></div></div>
+          <div class="week-day"><div class="week-label">五</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label" style="color:#4F6EF7">六</div><div class="week-dot dot-today">6</div></div>
+          <div class="week-day"><div class="week-label">日</div><div class="week-dot dot-empty"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部导航 -->
+  <div class="bottom-nav">
+    <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label active">首页</div></div>
+    <div class="nav-item"><div class="nav-icon">📚</div><div class="nav-label">错题本</div></div>
+    <div class="fab">＋</div>
+    <div class="nav-item"><div class="nav-icon">📊</div><div class="nav-label">周报</div></div>
+    <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">我的</div></div>
+  </div>
+</div>
+</body>
+</html>

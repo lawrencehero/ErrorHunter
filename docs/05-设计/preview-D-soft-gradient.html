@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方案D - 柔和渐变 Soft Gradient</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { display:flex; justify-content:center; align-items:center; min-height:100vh; background:#ddd; font-family: -apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif; }
+
+.phone {
+  width: 390px; height: 844px; border-radius: 44px; overflow: hidden;
+  position: relative;
+  background: #F8F9FC;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.2);
+}
+/* 微妙噪点 */
+.phone::before {
+  content:''; position:absolute; inset:0; z-index:0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  opacity:0.5; pointer-events:none;
+}
+.content { position:relative; z-index:1; height:100%; overflow-y:auto; padding-bottom:90px; }
+.content::-webkit-scrollbar { display:none; }
+.inner { padding: 54px 16px 0; }
+
+/* 顶栏 */
+.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.avatar { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#4F6EF7,#6C5CE7); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:16px; }
+.greeting-area { flex:1; margin-left:12px; }
+.greeting { font-size:20px; font-weight:700; color:#1A1A2E; }
+.greeting-sub { font-size:12px; color:#6B7280; margin-top:2px; }
+.topbar-right { display:flex; gap:8px; }
+.topbar-icon { width:36px; height:36px; border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); position:relative; }
+.badge { position:absolute; top:-2px; right:-2px; width:8px; height:8px; border-radius:50%; background:#FF3B30; border:2px solid #F8F9FC; }
+
+/* 渐变边框卡片 */
+.gradient-border {
+  padding:2px; border-radius:22px; margin-bottom:14px;
+  background: linear-gradient(135deg, #4F6EF7, #6C5CE7, #FF8C42, #FFB07A);
+}
+.gradient-border-inner {
+  background:#fff; border-radius:20px; padding:18px;
+}
+
+/* 打卡区 */
+.streak-row { display:flex; align-items:center; gap:14px; }
+.streak-icon-wrap {
+  width:52px; height:52px; border-radius:16px;
+  background: linear-gradient(135deg, #FF8C42, #FFB07A);
+  display:flex; align-items:center; justify-content:center;
+  font-size:26px; box-shadow: 0 4px 12px rgba(255,140,66,0.3);
+}
+.streak-info { flex:1; }
+.streak-title { font-size:15px; font-weight:600; color:#1A1A2E; }
+.streak-num { font-size:28px; font-weight:800; color:#FF8C42; line-height:1.1; }
+.streak-bar { height:6px; border-radius:3px; background:#F2F2F7; margin-top:6px; }
+.streak-fill { height:100%; width:65%; border-radius:3px; background:linear-gradient(90deg,#FF8C42,#FFB07A); }
+
+/* 统计区 */
+.stats-row { display:flex; gap:10px; margin-bottom:14px; }
+.stat-card {
+  flex:1; background:#fff; border-radius:18px; padding:16px 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+  position:relative; overflow:hidden;
+}
+.stat-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+}
+.stat-card:nth-child(1)::before { background:linear-gradient(90deg,#4F6EF7,#7B93FF); }
+.stat-card:nth-child(2)::before { background:linear-gradient(90deg,#34C759,#66D97A); }
+.stat-card:nth-child(3)::before { background:linear-gradient(90deg,#FF8C42,#FFB07A); }
+
+/* 环形图 */
+.ring-wrap { display:flex; align-items:center; gap:10px; }
+.ring { width:48px; height:48px; position:relative; }
+.ring svg { width:48px; height:48px; transform:rotate(-90deg); }
+.ring-bg { fill:none; stroke:#F2F2F7; stroke-width:5; }
+.ring-fill { fill:none; stroke-width:5; stroke-linecap:round; }
+.ring-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#1A1A2E; }
+
+.stat-num { font-size:24px; font-weight:800; color:#1A1A2E; letter-spacing:-0.5px; }
+.stat-label { font-size:11px; color:#6B7280; margin-top:2px; font-weight:500; }
+
+/* 今日任务 */
+.task-card {
+  background:#fff; border-radius:20px; padding:18px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.05); margin-bottom:14px;
+}
+.task-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.task-title { font-size:16px; font-weight:700; color:#1A1A2E; display:flex; align-items:center; gap:6px; }
+.task-badge { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; background:#EEF1FE; color:#4F6EF7; }
+.task-content { display:flex; align-items:center; gap:16px; }
+.task-big-num { font-size:48px; font-weight:800; color:#4F6EF7; line-height:1; letter-spacing:-2px; }
+.task-mid { flex:1; }
+.task-desc { font-size:14px; color:#6B7280; font-weight:500; }
+.task-btn {
+  margin-top:12px; padding:12px 20px; border:none; border-radius:14px;
+  background: linear-gradient(135deg, #4F6EF7, #7B93FF);
+  color:#fff; font-size:14px; font-weight:700; cursor:pointer;
+  display:flex; align-items:center; gap:6px;
+  box-shadow: 0 4px 12px rgba(79,110,247,0.25);
+}
+
+/* 知识点 */
+.section-card {
+  background:#fff; border-radius:20px; padding:18px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.05); margin-bottom:14px;
+}
+.section-head { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.section-icon { width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.section-title { font-size:16px; font-weight:700; color:#1A1A2E; flex:1; }
+.section-more { font-size:12px; color:#4F6EF7; font-weight:600; }
+
+.kp-item { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.kp-item:last-child { margin-bottom:0; }
+.kp-emoji { width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.kp-info { flex:1; }
+.kp-name { font-size:14px; font-weight:600; color:#1A1A2E; margin-bottom:4px; }
+.kp-bar { height:6px; border-radius:3px; background:#F2F2F7; }
+.kp-bar-fill { height:100%; border-radius:3px; }
+.kp-count-badge { padding:3px 8px; border-radius:8px; font-size:11px; font-weight:700; }
+
+/* 周打卡 */
+.week-row { display:flex; justify-content:space-between; margin-top:12px; }
+.week-day { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.week-label { font-size:11px; color:#9CA3AF; font-weight:600; }
+.week-dot { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
+.dot-done { background:linear-gradient(135deg,#34C759,#66D97A); color:#fff; }
+.dot-today { border:2.5px solid #4F6EF7; background:#EEF1FE; color:#4F6EF7; font-weight:800; font-size:12px; }
+.dot-empty { background:#F2F2F7; }
+
+/* 底部导航 */
+.bottom-nav {
+  position:absolute; bottom:0; left:0; right:0; height:78px;
+  background:rgba(255,255,255,0.85); backdrop-filter:blur(20px);
+  border-top:1px solid rgba(0,0,0,0.05);
+  display:flex; align-items:center; justify-content:space-around;
+  padding:0 10px 14px;
+}
+.nav-item { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.nav-icon { font-size:22px; }
+.nav-label { font-size:10px; color:#9CA3AF; font-weight:500; }
+.nav-label.active { color:#4F6EF7; font-weight:700; }
+.fab {
+  width:56px; height:56px; border-radius:18px;
+  background: linear-gradient(135deg, #4F6EF7, #6C5CE7);
+  display:flex; align-items:center; justify-content:center;
+  font-size:28px; color:#fff; margin-top:-28px;
+  box-shadow: 0 8px 24px rgba(79,110,247,0.35);
+}
+
+.label-tag {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  background:linear-gradient(135deg,#4F6EF7,#6C5CE7); color:#fff;
+  padding:8px 24px; border-radius:20px; font-size:14px; font-weight:600; z-index:999;
+}
+</style>
+</head>
+<body>
+<div class="label-tag">方案 D — 柔和渐变 Soft Gradient</div>
+<div class="phone">
+  <div class="content">
+    <div class="inner">
+      <!-- 顶栏 -->
+      <div class="topbar">
+        <div class="avatar">明</div>
+        <div class="greeting-area">
+          <div class="greeting">Hi，小明 👋</div>
+          <div class="greeting-sub">今天有 8 道错题等你复习</div>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-icon">☁️</div>
+          <div class="topbar-icon">🔔<div class="badge"></div></div>
+        </div>
+      </div>
+
+      <!-- 打卡区 - 渐变边框 -->
+      <div class="gradient-border">
+        <div class="gradient-border-inner">
+          <div class="streak-row">
+            <div class="streak-icon-wrap">🔥</div>
+            <div class="streak-info">
+              <div class="streak-title">连续打卡</div>
+              <div class="streak-num">12 天</div>
+            </div>
+            <div style="font-size:28px">🏆</div>
+          </div>
+          <div style="margin-top:10px">
+            <div class="streak-bar"><div class="streak-fill"></div></div>
+            <div style="font-size:11px;color:#6B7280;margin-top:4px">距下一里程碑还差 3 天</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 统计行 -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-num">156</div>
+          <div class="stat-label">累计错题</div>
+        </div>
+        <div class="stat-card">
+          <div class="ring-wrap">
+            <div class="ring">
+              <svg viewBox="0 0 48 48">
+                <circle class="ring-bg" cx="24" cy="24" r="19"/>
+                <circle class="ring-fill" cx="24" cy="24" r="19" stroke="#34C759" stroke-dasharray="75 120"/>
+              </svg>
+              <div class="ring-text">63%</div>
+            </div>
+            <div>
+              <div class="stat-num" style="color:#34C759">98</div>
+              <div class="stat-label">已消灭</div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" style="color:#FF8C42">63%</div>
+          <div class="stat-label">消灭率</div>
+        </div>
+      </div>
+
+      <!-- 今日任务 -->
+      <div class="task-card">
+        <div class="task-head">
+          <div class="task-title">📝 今日任务</div>
+          <div class="task-badge">待完成</div>
+        </div>
+        <div class="task-content">
+          <div class="task-big-num">8</div>
+          <div class="task-mid">
+            <div class="task-desc">道错题等你复习</div>
+          </div>
+        </div>
+        <button class="task-btn">▶ 开始复习</button>
+      </div>
+
+      <!-- 薄弱知识点 -->
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-icon" style="background:#FFF3E0">⚠️</div>
+          <div class="section-title">薄弱知识点</div>
+          <div class="section-more">查看全部 →</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-emoji" style="background:rgba(108,92,231,0.1)">🧠</div>
+          <div class="kp-info">
+            <div class="kp-name">分数加减法</div>
+            <div class="kp-bar"><div class="kp-bar-fill" style="width:100%;background:linear-gradient(90deg,#6C5CE7,#A29BFE)"></div></div>
+          </div>
+          <div class="kp-count-badge" style="background:rgba(108,92,231,0.1);color:#6C5CE7">12题</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-emoji" style="background:rgba(9,132,227,0.1)">✏️</div>
+          <div class="kp-info">
+            <div class="kp-name">几何面积计算</div>
+            <div class="kp-bar"><div class="kp-bar-fill" style="width:66%;background:linear-gradient(90deg,#0984E3,#74B9FF)"></div></div>
+          </div>
+          <div class="kp-count-badge" style="background:rgba(9,132,227,0.1);color:#0984E3">8题</div>
+        </div>
+        <div class="kp-item">
+          <div class="kp-emoji" style="background:rgba(225,112,85,0.1)">😰</div>
+          <div class="kp-info">
+            <div class="kp-name">应用题审题</div>
+            <div class="kp-bar"><div class="kp-bar-fill" style="width:50%;background:linear-gradient(90deg,#E17055,#FAB1A0)"></div></div>
+          </div>
+          <div class="kp-count-badge" style="background:rgba(225,112,85,0.1);color:#E17055">6题</div>
+        </div>
+      </div>
+
+      <!-- 本周打卡 -->
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-icon" style="background:#EEF1FE">📅</div>
+          <div class="section-title">本周打卡</div>
+          <span style="flex:1"></span>
+          <span style="font-size:13px;font-weight:700;color:#6B7280">5/7</span>
+        </div>
+        <div class="week-row">
+          <div class="week-day"><div class="week-label">一</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">二</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">三</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label">四</div><div class="week-dot dot-empty"></div></div>
+          <div class="week-day"><div class="week-label">五</div><div class="week-dot dot-done">✓</div></div>
+          <div class="week-day"><div class="week-label" style="color:#4F6EF7;font-weight:700">六</div><div class="week-dot dot-today">6</div></div>
+          <div class="week-day"><div class="week-label">日</div><div class="week-dot dot-empty"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部导航 -->
+  <div class="bottom-nav">
+    <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label active">首页</div></div>
+    <div class="nav-item"><div class="nav-icon">📚</div><div class="nav-label">错题本</div></div>
+    <div class="fab">＋</div>
+    <div class="nav-item"><div class="nav-icon">📊</div><div class="nav-label">周报</div></div>
+    <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">我的</div></div>
+  </div>
+</div>
+</body>
+</html>
