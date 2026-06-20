@@ -38,3 +38,5 @@ coverage/
 
 # Go binaries
 **/bin/
+*.appx
+wsl_install.log
