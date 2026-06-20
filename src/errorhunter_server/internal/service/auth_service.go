@@ -188,11 +188,38 @@ func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*Aut
 	}, nil
 }
 
+// mapFrontendGrade 将前端传来的年级数字转换为数据库 enum 值
+// 前端: "3"→"31", "4"→"32", "5"→"33", "6"→"34"
+//       "7"→"71", "8"→"72", "9"→"73"
+func mapFrontendGrade(frontendGrade string) (model.Grade, error) {
+	mapping := map[string]model.Grade{
+		"3": model.Grade31, // 小学三年级
+		"4": model.Grade32, // 小学四年级
+		"5": model.Grade33, // 小学五年级
+		"6": model.Grade34, // 小学六年级
+		"7": model.Grade71, // 初中一年级
+		"8": model.Grade72, // 初中二年级
+		"9": model.Grade73, // 初中三年级
+	}
+
+	grade, ok := mapping[frontendGrade]
+	if !ok {
+		return "", fmt.Errorf("invalid grade: %s, must be one of 3-9", frontendGrade)
+	}
+	return grade, nil
+}
+
 func (s *AuthService) registerUser(ctx context.Context, req VerifyOTPRequest) (*model.User, error) {
 	// 检查手机号是否已注册
 	existing, _ := s.userRepo.FindByPhone(ctx, req.Phone)
 	if existing != nil {
 		return nil, errcode.EPhoneAlreadyRegistered
+	}
+
+	// 将前端年级数字映射为数据库 enum 值
+	dbGrade, err := mapFrontendGrade(req.Grade)
+	if err != nil {
+		return nil, errcode.EParamValidation
 	}
 
 	// 创建新用户
@@ -204,7 +231,7 @@ func (s *AuthService) registerUser(ctx context.Context, req VerifyOTPRequest) (*
 	user := &model.User{
 		Phone:              req.Phone,
 		Nickname:           &nickname,
-		Grade:              model.Grade(req.Grade),
+		Grade:              dbGrade,
 		StorageUsed:        0,
 		StorageLimit:       5368709120, // 5GB
 		StreakDays:         0,
