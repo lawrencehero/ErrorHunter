@@ -193,6 +193,7 @@ func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*Aut
 //       "7"→"71", "8"→"72", "9"→"73"
 func mapFrontendGrade(frontendGrade string) (model.Grade, error) {
 	mapping := map[string]model.Grade{
+		// 前端数字格式（3-9）
 		"3": model.Grade31, // 小学三年级
 		"4": model.Grade32, // 小学四年级
 		"5": model.Grade33, // 小学五年级
@@ -200,11 +201,19 @@ func mapFrontendGrade(frontendGrade string) (model.Grade, error) {
 		"7": model.Grade71, // 初中一年级
 		"8": model.Grade72, // 初中二年级
 		"9": model.Grade73, // 初中三年级
+		// 数据库 enum 格式（直接透传）
+		"31": model.Grade31,
+		"32": model.Grade32,
+		"33": model.Grade33,
+		"34": model.Grade34,
+		"71": model.Grade71,
+		"72": model.Grade72,
+		"73": model.Grade73,
 	}
 
 	grade, ok := mapping[frontendGrade]
 	if !ok {
-		return "", fmt.Errorf("invalid grade: %s, must be one of 3-9", frontendGrade)
+		return "", fmt.Errorf("invalid grade: %s, must be one of 3-9 or 31-34/71-73", frontendGrade)
 	}
 	return grade, nil
 }

@@ -104,7 +104,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
       emit(Authenticated(user));
     } catch (e) {
-      emit(AuthError('验证失败，请检查验证码'));
+      final msg = e.toString();
+      if (msg.contains('验证码') || msg.contains('10002')) {
+        emit(const AuthError('验证码错误或已过期'));
+      } else if (msg.contains('频繁') || msg.contains('10006')) {
+        emit(const AuthError('操作过于频繁，请稍后再试'));
+      } else if (msg.contains('锁定') || msg.contains('10005')) {
+        emit(const AuthError('账号已被临时锁定，请30分钟后再试'));
+      } else if (msg.contains('已注册') || msg.contains('10001')) {
+        emit(const AuthError('该手机号已注册'));
+      } else {
+        emit(AuthError('注册失败：${msg.length > 50 ? "请稍后重试" : msg}'));
+      }
     }
   }
 
