@@ -8,7 +8,7 @@ database:
   host: localhost
   port: 5432
   user: errorhunter
-  password: errorhunter123
+  password: errorhunter_dev
   dbname: errorhunter
   sslmode: disable
   max_open_conns: 25
@@ -24,7 +24,7 @@ redis:
 minio:
   endpoint: localhost:9000
   access_key: minioadmin
-  secret_key: minioadmin
+  secret_key: minioadmin123
   bucket: errorhunter
   region: us-east-1
   use_ssl: false
