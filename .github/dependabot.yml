@@ -1,0 +1,78 @@
+# ============================================================
+# Dependabot 自动依赖更新配置
+# ============================================================
+
+version: 2
+
+updates:
+  # Go 模块
+  - package-ecosystem: "gomod"
+    directory: "/src/errorhunter_server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "errorhunter/maintainers"
+    labels:
+      - "dependencies"
+      - "backend"
+    commit-message:
+      prefix: "build(backend)"
+      include: "scope"
+
+  # Flutter/Dart pub
+  - package-ecosystem: "pub"
+    directory: "/src/errorhunter_app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "errorhunter/maintainers"
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "build(frontend)"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "errorhunter/maintainers"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/deploy"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "errorhunter/maintainers"
+    labels:
+      - "dependencies"
+      - "deploy"
+    commit-message:
+      prefix: "build(deploy)"
+      include: "scope"

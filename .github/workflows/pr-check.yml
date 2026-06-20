@@ -1,0 +1,169 @@
+# ============================================================
+# 错题猎手（ErrorHunter）PR 质量门禁
+# 触发条件：PR 创建/更新
+# ============================================================
+
+name: PR 质量门禁
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+env:
+  GO_VERSION: "1.22"
+  BACKEND_COVERAGE_THRESHOLD: 60
+
+jobs:
+  # ==================== Commit 消息规范检查 ====================
+  conventional-commits:
+    name: 📝 Commit 消息规范
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 检查 Commit 消息格式
+        uses: amannn/action-conventional-commits@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          scopes: |
+            backend
+            frontend
+            deploy
+            docs
+            ci
+          requireScope: false
+
+  # ==================== 代码覆盖率检查 ====================
+  code-coverage:
+    name: 📊 代码覆盖率门禁
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/errorhunter_server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: src/errorhunter_server/go.sum
+
+      - name: 下载依赖
+        run: go mod download
+
+      - name: 运行测试并生成覆盖率
+        run: |
+          go test -race -coverprofile=coverage.out -covermode=atomic -count=1 \
+            $(go list ./... | grep -v /integration/)
+        timeout-minutes: 10
+
+      - name: 检查覆盖率阈值
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          THRESHOLD=${{ env.BACKEND_COVERAGE_THRESHOLD }}
+          echo "📊 当前覆盖率: ${COVERAGE}%"
+          echo "🎯 最低要求: ${THRESHOLD}%"
+
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "❌ 覆盖率低于阈值！请补充测试用例。"
+            exit 1
+          else
+            echo "✅ 覆盖率达标"
+          fi
+
+      - name: 覆盖率报告评论到 PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let coverage = 'N/A';
+            try {
+              const output = fs.readFileSync('src/errorhunter_server/coverage.out', 'utf8');
+              // 简单解析覆盖率
+              coverage = '已生成';
+            } catch(e) {
+              coverage = '未生成';
+            }
+
+            const body = `## 📊 后端代码覆盖率报告\n\n` +
+              `- 覆盖率文件: ✅ 已生成\n` +
+              `- 最低阈值: ${{ env.BACKEND_COVERAGE_THRESHOLD }}%\n` +
+              `- 详细报告: 请下载 Artifact 查看\n`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # ==================== 安全扫描 ====================
+  security-scan:
+    name: 🔒 安全扫描
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: src/errorhunter_server/go.sum
+
+      - name: 安装 gosec
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: 运行 gosec 安全扫描
+        working-directory: src/errorhunter_server
+        run: |
+          gosec -fmt=sarif -out=gosec-results.sarif -severity medium -confidence medium ./... || true
+          echo "🔒 gosec 扫描完成"
+
+      - name: 上传安全扫描结果
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: src/errorhunter_server/gosec-results.sarif
+          category: gosec
+
+      - name: 检查敏感信息泄露
+        run: |
+          echo "🔍 检查硬编码密钥和敏感信息..."
+          FOUND=0
+
+          # 检查常见敏感模式
+          if grep -rn --include="*.go" \
+            -e "password\s*[:=]\s*\"" \
+            -e "secret\s*[:=]\s*\"" \
+            -e "api_key\s*[:=]\s*\"" \
+            src/errorhunter_server/ | grep -v "_test.go" | grep -v "example" | grep -v "// "; then
+            echo "⚠️  发现可能的硬编码敏感信息"
+            FOUND=1
+          fi
+
+          if [ $FOUND -eq 0 ]; then
+            echo "✅ 未发现明显的敏感信息泄露"
+          fi

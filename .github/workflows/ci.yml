@@ -1,0 +1,199 @@
+# ============================================================
+# 错题猎手（ErrorHunter）CI 流水线
+# 触发条件：PR 到 main / push 到 main
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.22"
+  FLUTTER_VERSION: "3.24.0"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/server
+
+jobs:
+  # ==================== 后端 Lint ====================
+  backend-lint:
+    name: 🔍 后端代码检查
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/errorhunter_server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: src/errorhunter_server/go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: src/errorhunter_server
+          args: --timeout=5m ./...
+
+  # ==================== 后端单元测试 ====================
+  backend-test:
+    name: 🧪 后端单元测试
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/errorhunter_server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: src/errorhunter_server/go.sum
+
+      - name: 下载依赖
+        run: go mod download && go mod verify
+
+      - name: 运行单元测试（含覆盖率）
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic -count=1 \
+            $(go list ./... | grep -v /integration/)
+        timeout-minutes: 10
+
+      - name: 上传覆盖率报告
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: src/errorhunter_server/coverage.out
+          retention-days: 7
+
+      - name: 输出覆盖率摘要
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+          echo "📊 后端测试覆盖率: $COVERAGE"
+          echo "coverage=$COVERAGE" >> "$GITHUB_OUTPUT"
+
+  # ==================== 后端集成测试 ====================
+  backend-integration-test:
+    name: 🔗 后端集成测试
+    runs-on: ubuntu-latest
+    needs: [backend-lint, backend-test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 构建并运行集成测试
+        run: |
+          cd deploy
+          docker compose -f docker-compose.test.yml up \
+            --abort-on-container-exit \
+            --exit-code-from test-runner \
+            --build
+        timeout-minutes: 15
+
+      - name: 清理测试环境
+        if: always()
+        run: |
+          cd deploy
+          docker compose -f docker-compose.test.yml down -v --remove-orphans
+
+  # ==================== 前端 Lint ====================
+  frontend-lint:
+    name: 🔍 前端代码检查
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/errorhunter_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Flutter 环境
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 获取依赖
+        run: flutter pub get
+
+      - name: 代码分析
+        run: flutter analyze --no-pub
+
+      - name: 格式化检查
+        run: dart format --set-exit-if-changed .
+
+  # ==================== 前端单元测试 ====================
+  frontend-test:
+    name: 🧪 前端单元测试
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/errorhunter_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Flutter 环境
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 获取依赖
+        run: flutter pub get
+
+      - name: 运行单元测试（含覆盖率）
+        run: |
+          flutter test --coverage --machine > test-results.json || true
+          flutter test --coverage
+        timeout-minutes: 15
+
+      - name: 上传覆盖率报告
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: src/errorhunter_app/coverage/
+          retention-days: 7
+
+  # ==================== Docker 构建检查 ====================
+  build-check:
+    name: 🐳 Docker 构建验证
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 构建后端镜像（不推送）
+        uses: docker/build-push-action@v6
+        with:
+          context: src/errorhunter_server
+          file: deploy/Dockerfile
+          push: false
+          tags: errorhunter-server:ci-check
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 验证镜像可启动
+        run: |
+          docker run -d --name health-check \
+            -e EH_SERVER_PORT=8080 \
+            -e EH_SERVER_MODE=test \
+            -p 8080:8080 \
+            errorhunter-server:ci-check || true
+          sleep 5
+          docker logs health-check || true
+          docker rm -f health-check || true

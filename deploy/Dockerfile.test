@@ -1,0 +1,32 @@
+# ============================================================
+# 错题猎手（ErrorHunter）测试专用 Dockerfile
+# 构建 Go 测试二进制并运行 go test
+# ============================================================
+
+# -------------------- Stage 1: Build --------------------
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /build
+
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
+
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+COPY . .
+
+# 编译测试二进制（包含所有测试文件）
+RUN CGO_ENABLED=0 GOOS=linux go test -c -o /build/test-runner ./...
+
+# -------------------- Stage 2: Test Runtime --------------------
+FROM golang:1.22-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache ca-certificates tzdata curl
+
+# 复制源码（测试可能需要读取 fixtures 等）
+COPY --from=builder /build /app
+
+# 默认运行全部测试
+CMD ["go", "test", "-v", "-race", "-coverprofile=/tmp/coverage.out", "-count=1", "./..."]

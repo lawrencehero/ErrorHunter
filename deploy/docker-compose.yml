@@ -1,0 +1,155 @@
+# ============================================================
+# 错题猎手（ErrorHunter）集成测试 & 本地开发环境
+# Docker Compose 主配置文件
+# ============================================================
+
+services:
+  # ==================== PostgreSQL ====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: errorhunter-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-errorhunter}
+      POSTGRES_USER: ${POSTGRES_USER:-errorhunter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-errorhunter_dev}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql:ro
+    networks:
+      - errorhunter-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-errorhunter} -d ${POSTGRES_DB:-errorhunter}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==================== Redis ====================
+  redis:
+    image: redis:7-alpine
+    container_name: errorhunter-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - errorhunter-net
+    command: >
+      redis-server
+      --appendonly yes
+      --save 60 1
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==================== MinIO (S3-compatible) ====================
+  minio:
+    image: minio/minio:latest
+    container_name: errorhunter-minio
+    restart: unless-stopped
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - miniodata:/data
+    networks:
+      - errorhunter-net
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # MinIO bucket 初始化
+  minio-init:
+    image: minio/mc:latest
+    container_name: errorhunter-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - errorhunter-net
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin123};
+      mc mb local/${MINIO_BUCKET:-errorhunter} --ignore-existing;
+      echo 'MinIO bucket initialized';
+      exit 0;
+      "
+
+  # ==================== Go Backend ====================
+  server:
+    build:
+      context: ../src/errorhunter_server
+      dockerfile: ../../deploy/Dockerfile
+    container_name: errorhunter-server
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      # 通过 EH_ 前缀的环境变量覆盖 config.yaml 中的配置
+      CONFIG_PATH: ${CONFIG_PATH:-/app/configs/config.yaml}
+      EH_SERVER_PORT: "8080"
+      EH_SERVER_MODE: ${APP_MODE:-debug}
+      EH_DATABASE_HOST: postgres
+      EH_DATABASE_PORT: "5432"
+      EH_DATABASE_USER: ${POSTGRES_USER:-errorhunter}
+      EH_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-errorhunter_dev}
+      EH_DATABASE_DBNAME: ${POSTGRES_DB:-errorhunter}
+      EH_DATABASE_SSLMODE: disable
+      EH_REDIS_ADDR: redis:6379
+      EH_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      EH_MINIO_ENDPOINT: minio:9000
+      EH_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      EH_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      EH_MINIO_BUCKET: ${MINIO_BUCKET:-errorhunter}
+      EH_MINIO_USE_SSL: "false"
+      EH_JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-errorhunter-access-secret-key-change-in-production}
+      EH_JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-errorhunter-refresh-secret-key-change-in-production}
+      EH_JWT_ACCESS_EXPIRE: "${JWT_ACCESS_EXPIRE:-15}"
+      EH_JWT_REFRESH_EXPIRE: "${JWT_REFRESH_EXPIRE:-10080}"
+      EH_OTP_PROVIDER: ${OCR_PROVIDER:-mock}
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - errorhunter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  miniodata:
+    driver: local
+
+networks:
+  errorhunter-net:
+    driver: bridge
