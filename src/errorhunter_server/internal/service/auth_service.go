@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"math/big"
 	"time"
+	"unicode/utf8"
 
 	"github.com/errorhunter/errorhunter-server/internal/config"
 	"github.com/errorhunter/errorhunter-server/internal/model"
@@ -235,6 +237,12 @@ func (s *AuthService) registerUser(ctx context.Context, req VerifyOTPRequest) (*
 	nickname := req.Nickname
 	if nickname == "" {
 		nickname = fmt.Sprintf("用户%s", req.Phone[7:])
+	} else {
+		// 昵称长度校验（按 Unicode 字符数，与 user_handler 保持一致）
+		nickLen := utf8.RuneCountInString(nickname)
+		if nickLen < 2 || nickLen > 12 {
+			return nil, errcode.ENicknameInvalid
+		}
 	}
 
 	user := &model.User{
@@ -312,9 +320,26 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*A
 }
 
 // Logout 登出
-func (s *AuthService) Logout(ctx context.Context, userID int64) error {
+func (s *AuthService) Logout(ctx context.Context, userID int64, accessToken string) error {
+	// 删除refresh token
 	refreshKey := fmt.Sprintf("token:refresh:%d", userID)
-	return s.redis.Del(ctx, refreshKey).Err()
+	s.redis.Del(ctx, refreshKey)
+
+	// 将access token加入黑名单，TTL为token剩余有效期
+	if accessToken != "" {
+		claims, err := s.jwtMgr.ParseAccessToken(accessToken)
+		if err == nil && claims.ExpiresAt != nil {
+			remaining := time.Until(claims.ExpiresAt.Time)
+			if remaining > 0 {
+				blacklistKey := fmt.Sprintf("token:blacklist:%d:%d", claims.UserID, claims.ExpiresAt.Unix())
+				if err := s.redis.Set(ctx, blacklistKey, 1, remaining).Err(); err != nil {
+					log.Printf("[WARN] Failed to blacklist access token for user %d: %v", userID, err)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func generateOTP() (string, error) {

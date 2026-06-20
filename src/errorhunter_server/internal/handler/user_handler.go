@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"unicode/utf8"
+
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
 	"github.com/errorhunter/errorhunter-server/internal/repository"
@@ -85,7 +87,7 @@ func (h *UserHandler) UpdateSettings(c *gin.Context) {
 
 	// 应用更新
 	if req.Nickname != nil {
-		nickLen := len(*req.Nickname)
+		nickLen := utf8.RuneCountInString(*req.Nickname)
 		if nickLen < 2 || nickLen > 12 {
 			respondError(c, errcode.ENicknameInvalid)
 			return

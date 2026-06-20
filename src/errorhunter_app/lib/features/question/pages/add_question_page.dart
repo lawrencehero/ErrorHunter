@@ -19,6 +19,8 @@ import '../../../widgets/common/buttons/primary_button.dart';
 import '../../../widgets/common/buttons/secondary_button.dart';
 import '../../../widgets/common/dialogs/toast.dart';
 import '../../../widgets/common/inputs/text_field.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/bloc/auth_state.dart';
 import '../bloc/question_bloc.dart';
 import '../bloc/question_event.dart';
 import '../bloc/question_state.dart';
@@ -456,7 +458,7 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
               });
             },
             recommendedCategory: _recommendedCategory,
-            showUnknown: true, // MVP: always show for demo
+            showUnknown: _shouldShowUnknown(),
             subCategories: subCats,
             selectedSubCategories: _selectedSubCategories,
             onSubCategoryChanged: (subs) =>
@@ -551,6 +553,19 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
         ],
       ),
     );
+  }
+
+  /// 根据用户年级决定是否显示"不确定"选项
+  /// 小学 (31-36): 显示; 初中 (71-73): 不显示
+  bool _shouldShowUnknown() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is Authenticated) {
+      final grade = authState.user.grade;
+      // 初中年级 (71, 72, 73) 不显示"不确定"
+      if (grade.startsWith('7')) return false;
+    }
+    // 默认显示（小学或未获取到年级时）
+    return true;
   }
 
   void _showAddTagDialog() {

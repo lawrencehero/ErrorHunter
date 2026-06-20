@@ -40,3 +40,13 @@ coverage/
 **/bin/
 *.appx
 wsl_install.log
+
+# Docker deploy artifacts
+deploy/.env
+!deploy/.env.example
+coverage.out
+coverage.html
+
+# Android local config (machine-specific)
+**/local.properties
+**/.metadata

@@ -86,7 +86,7 @@ func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyL
 	}
 
 	// 应用每日上限
-	var reviewItems []ReviewItem
+	reviewItems := make([]ReviewItem, 0)
 	overflowCount := 0
 	if len(dueQuestions) > dailyLimit {
 		overflowCount = len(dueQuestions) - dailyLimit
@@ -132,7 +132,7 @@ func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyL
 		return nil, errcode.EInternalServer
 	}
 
-	var reviveItems []ReviveItem
+	reviveItems := make([]ReviveItem, 0)
 	for _, q := range reviveQuestions {
 		interval := 30
 		if q.ReviveCheckInterval != nil {

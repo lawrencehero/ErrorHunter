@@ -1,11 +1,14 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
 	jwtPkg "github.com/errorhunter/errorhunter-server/internal/pkg/jwt"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -15,7 +18,7 @@ const (
 )
 
 // Auth JWT认证中间件
-func Auth(jwtMgr *jwtPkg.Manager) gin.HandlerFunc {
+func Auth(jwtMgr *jwtPkg.Manager, redisClient *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader(HeaderAuth)
 		if authHeader == "" {
@@ -39,13 +42,23 @@ func Auth(jwtMgr *jwtPkg.Manager) gin.HandlerFunc {
 			return
 		}
 
+		// 检查token是否在黑名单中（已登出的token）
+		if redisClient != nil {
+			blacklistKey := fmt.Sprintf("token:blacklist:%d:%d", claims.UserID, claims.ExpiresAt.Unix())
+			exists, _ := redisClient.Exists(context.Background(), blacklistKey).Result()
+			if exists > 0 {
+				handleAuthError(c, errcode.EUnauthorized)
+				return
+			}
+		}
+
 		c.Set(ContextKeyUserID, claims.UserID)
 		c.Next()
 	}
 }
 
 // OptionalAuth 可选认证中间件（不强制要求登录）
-func OptionalAuth(jwtMgr *jwtPkg.Manager) gin.HandlerFunc {
+func OptionalAuth(jwtMgr *jwtPkg.Manager, redisClient *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader(HeaderAuth)
 		if authHeader == "" {
@@ -57,6 +70,15 @@ func OptionalAuth(jwtMgr *jwtPkg.Manager) gin.HandlerFunc {
 			tokenString := strings.TrimPrefix(authHeader, BearerPrefix)
 			claims, err := jwtMgr.ParseAccessToken(tokenString)
 			if err == nil {
+				// 检查黑名单
+				if redisClient != nil {
+					blacklistKey := fmt.Sprintf("token:blacklist:%d:%d", claims.UserID, claims.ExpiresAt.Unix())
+					exists, _ := redisClient.Exists(context.Background(), blacklistKey).Result()
+					if exists > 0 {
+						c.Next()
+						return
+					}
+				}
 				c.Set(ContextKeyUserID, claims.UserID)
 			}
 		}

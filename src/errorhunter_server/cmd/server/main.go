@@ -86,7 +86,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	questionHandler := handler.NewQuestionHandler(questionService)
 	reviewHandler := handler.NewReviewHandler(reviewService)
-	reportHandler := handler.NewReportHandler(reportRepo)
+	reportHandler := handler.NewReportHandler(reportRepo, userRepo)
 	userHandler := handler.NewUserHandler(userRepo)
 	syncHandler := handler.NewSyncHandler()
 
@@ -122,7 +122,7 @@ func main() {
 
 		// 需要认证的端点
 		authenticated := v1.Group("")
-		authenticated.Use(middleware.Auth(jwtMgr))
+		authenticated.Use(middleware.Auth(jwtMgr, redisClient))
 		{
 			// Auth
 			authenticated.POST("/auth/logout", authHandler.Logout)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
@@ -12,10 +13,11 @@ import (
 // ReportHandler 报告处理器
 type ReportHandler struct {
 	reportRepo *repository.WeeklyReportRepository
+	userRepo   *repository.UserRepository
 }
 
-func NewReportHandler(reportRepo *repository.WeeklyReportRepository) *ReportHandler {
-	return &ReportHandler{reportRepo: reportRepo}
+func NewReportHandler(reportRepo *repository.WeeklyReportRepository, userRepo *repository.UserRepository) *ReportHandler {
+	return &ReportHandler{reportRepo: reportRepo, userRepo: userRepo}
 }
 
 // GetDashboard 获取Dashboard概览
@@ -27,27 +29,91 @@ func (h *ReportHandler) GetDashboard(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实现完整的Dashboard数据聚合
-	// 目前返回简化版本
+	ctx := c.Request.Context()
+
+	// 获取用户信息（昵称、打卡天数）
+	user, err := h.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		respondError(c, errcode.EUserNotFound)
+		return
+	}
+
+	nickname := "用户"
+	if user.Nickname != nil {
+		nickname = *user.Nickname
+	}
+
+	// 获取统计数据
+	stats, err := h.reportRepo.GetDashboardStats(ctx, userID)
+	if err != nil {
+		respondError(c, errcode.EInternalServer)
+		return
+	}
+
+	// 计算消灭率
+	var eliminationRate float64
+	if stats.TotalQuestions > 0 {
+		eliminationRate = math.Round(float64(stats.MasteredCount)/float64(stats.TotalQuestions)*1000) / 10
+	}
+
+	// 获取错因分布
+	errorDist, _ := h.reportRepo.GetErrorDistribution(ctx, userID)
+	errorDistData := make([]gin.H, 0, len(errorDist))
+	for _, item := range errorDist {
+		errorDistData = append(errorDistData, gin.H{
+			"category": item.Category,
+			"count":    item.Count,
+		})
+	}
+
+	// 获取周趋势
+	weeklyTrend, _ := h.reportRepo.GetWeeklyTrend(ctx, userID)
+	weeklyTrendData := make([]gin.H, 0, len(weeklyTrend))
+	for _, item := range weeklyTrend {
+		weeklyTrendData = append(weeklyTrendData, gin.H{
+			"date":           item.Date,
+			"new_questions":  item.NewQuestions,
+			"mastered_count": item.MasteredCount,
+		})
+	}
+
+	// 获取薄弱知识点Top3
+	weakKnowledge, _ := h.reportRepo.GetWeakKnowledgeTop(ctx, userID)
+	weakKnowledgeData := make([]gin.H, 0, len(weakKnowledge))
+	for _, item := range weakKnowledge {
+		weakKnowledgeData = append(weakKnowledgeData, gin.H{
+			"id":    item.ID,
+			"name":  item.Name,
+			"count": item.Count,
+		})
+	}
+
 	respondSuccess(c, gin.H{
 		"greeting": gin.H{
-			"nickname":    "用户",
-			"streak_days": 0,
+			"nickname":    nickname,
+			"streak_days": user.StreakDays,
 		},
 		"today_task": gin.H{
-			"pending_review_count": 0,
-			"has_overflow":         false,
-			"overflow_count":       0,
+			"pending_review_count": stats.PendingReview,
+			"has_overflow":         stats.PendingReview > int64(user.DailyReviewLimit),
+			"overflow_count":       maxInt64(0, stats.PendingReview-int64(user.DailyReviewLimit)),
 		},
 		"statistics": gin.H{
-			"total_questions":   0,
-			"mastered_count":    0,
-			"elimination_rate":  0.0,
+			"total_questions":  stats.TotalQuestions,
+			"mastered_count":   stats.MasteredCount,
+			"elimination_rate": eliminationRate,
 		},
-		"error_distribution": []gin.H{},
-		"weekly_trend":       []gin.H{},
-		"weak_knowledge_top": []gin.H{},
+		"error_distribution": errorDistData,
+		"weekly_trend":       weeklyTrendData,
+		"weak_knowledge_top": weakKnowledgeData,
 	})
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // GetWeeklyReports 获取周报列表

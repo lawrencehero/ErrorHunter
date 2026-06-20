@@ -116,7 +116,7 @@ func (r *QuestionRepository) List(ctx context.Context, filter ListFilter) (*List
 	offset := (filter.Page - 1) * filter.PageSize
 	query = query.Offset(offset).Limit(filter.PageSize)
 
-	var list []model.Question
+	list := make([]model.Question, 0)
 	if err := query.Preload("KnowledgePoints").Find(&list).Error; err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (r *QuestionRepository) ListRecycleBin(ctx context.Context, userID int64, p
 		Count(&total)
 
 	offset := (page - 1) * pageSize
-	var list []model.Question
+	list := make([]model.Question, 0)
 	err := r.db.WithContext(ctx).
 		Unscoped().
 		Preload("KnowledgePoints").
@@ -184,7 +184,7 @@ func (r *QuestionRepository) ClearRecycleBin(ctx context.Context, userID int64) 
 
 // GetDueQuestions 获取今日待复习题目
 func (r *QuestionRepository) GetDueQuestions(ctx context.Context, userID int64, today time.Time) ([]model.Question, error) {
-	var questions []model.Question
+	questions := make([]model.Question, 0)
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND deleted_at IS NULL AND status IN (?, ?) AND next_review_date <= ?",
 			userID, model.StatusNotStarted, model.StatusReviewing, today).
@@ -196,7 +196,7 @@ func (r *QuestionRepository) GetDueQuestions(ctx context.Context, userID int64, 
 
 // GetReviveCandidates 获取复活检测候选题目
 func (r *QuestionRepository) GetReviveCandidates(ctx context.Context, userID int64, today time.Time, limit int) ([]model.Question, error) {
-	var questions []model.Question
+	questions := make([]model.Question, 0)
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND deleted_at IS NULL AND status = ? AND revive_check_date <= ?",
 			userID, model.StatusMastered, today).

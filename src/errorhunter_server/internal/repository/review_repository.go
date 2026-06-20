@@ -43,7 +43,7 @@ func (r *ReviewRecordRepository) ListByUser(ctx context.Context, userID int64, p
 	r.db.WithContext(ctx).Model(&model.ReviewRecord{}).Where("user_id = ?", userID).Count(&total)
 
 	offset := (page - 1) * pageSize
-	var records []model.ReviewRecord
+	records := make([]model.ReviewRecord, 0)
 	err := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).
 		Order("reviewed_at DESC").

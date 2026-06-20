@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
@@ -99,7 +100,14 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.Logout(c.Request.Context(), userID); err != nil {
+	// 提取当前access token用于加入黑名单
+	var accessToken string
+	authHeader := c.GetHeader(middleware.HeaderAuth)
+	if strings.HasPrefix(authHeader, middleware.BearerPrefix) {
+		accessToken = strings.TrimPrefix(authHeader, middleware.BearerPrefix)
+	}
+
+	if err := h.authService.Logout(c.Request.Context(), userID, accessToken); err != nil {
 		respondError(c, errcode.EInternalServer)
 		return
 	}
