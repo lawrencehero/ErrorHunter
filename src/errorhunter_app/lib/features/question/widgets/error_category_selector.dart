@@ -64,25 +64,25 @@ class ErrorCategorySelector extends StatelessWidget {
       category: ErrorCategory.knowledge,
       emoji: '🧠',
       shortLabel: '不会做',
-      fullLabel: '知识性错误',
+      fullLabel: '没学会',
     ),
     ErrorCategoryOption(
       category: ErrorCategory.skill,
       emoji: '✏️',
       shortLabel: '算错了',
-      fullLabel: '技能性错误',
+      fullLabel: '手误了',
     ),
     ErrorCategoryOption(
       category: ErrorCategory.psychology,
       emoji: '😰',
       shortLabel: '粗心了',
-      fullLabel: '心理性错误',
+      fullLabel: '太紧张了',
     ),
     ErrorCategoryOption(
       category: ErrorCategory.habit,
       emoji: '📖',
       shortLabel: '看错了',
-      fullLabel: '习惯性错误',
+      fullLabel: '没仔细看',
     ),
   ];
 

@@ -36,21 +36,47 @@ class ReviewPage extends StatefulWidget {
   State<ReviewPage> createState() => _ReviewPageState();
 }
 
-class _ReviewPageState extends State<ReviewPage> {
+class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 进入全屏沉浸模式
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _setImmersiveMode(true);
     // 启动复习会话
     context.read<ReviewBloc>().add(StartReview(questionIds: widget.questionIds));
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // 退出时恢复系统UI
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _setImmersiveMode(false);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        // App 切后台或失去焦点时恢复系统 UI，防止沉浸模式泄漏
+        _setImmersiveMode(false);
+        break;
+      case AppLifecycleState.resumed:
+        // App 回到前台时重新设置沉浸模式
+        _setImmersiveMode(true);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /// 设置或取消沉浸模式
+  void _setImmersiveMode(bool immersive) {
+    SystemChrome.setEnabledSystemUIMode(
+      immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
   }
 
   @override
@@ -149,9 +175,9 @@ class _ReviewPageState extends State<ReviewPage> {
   Future<void> _showExitConfirmDialog() async {
     final confirmed = await EHConfirmDialog.show(
       context,
-      title: '确定退出复习吗？',
-      content: '当前进度将不会保存',
-      confirmText: '退出',
+      title: '结束复习？',
+      content: '未评价的题目将不计入本次复习记录',
+      confirmText: '结束复习',
       cancelText: '继续复习',
       isDestructive: true,
       icon: Icons.exit_to_app,
@@ -231,7 +257,18 @@ class _ReviewPageState extends State<ReviewPage> {
                     // 左滑 → 下一题（仅在答案已显示或已有评价时）
                     if (isAnswerShown || evaluationLocked) {
                       // 如果还没评价，不允许跳过
-                      if (!evaluationLocked && pendingRating == null) return;
+                      if (!evaluationLocked && pendingRating == null) {
+                        HapticFeedback.lightImpact();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('请先评价再进入下一题 👆'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                        return;
+                      }
                     }
                   } else if (velocity > 300) {
                     // 右滑 → 回看上一题

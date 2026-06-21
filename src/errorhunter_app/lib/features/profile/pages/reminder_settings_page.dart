@@ -100,7 +100,19 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                   Switch.adaptive(
                     value: _reminderEnabled,
                     activeColor: AppColors.brandPrimary,
-                    onChanged: (v) => setState(() => _reminderEnabled = v),
+                    onChanged: (v) {
+                      setState(() => _reminderEnabled = v);
+                      if (v) {
+                        // TODO: 集成 flutter_local_notifications 后，在此处请求通知权限
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text('请确保已在系统设置中开启通知权限，否则将无法收到复习提醒'),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    },
                   ),
                 ],
               ),

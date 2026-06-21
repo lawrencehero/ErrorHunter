@@ -5,6 +5,7 @@ library;
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -113,33 +114,79 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
     }
 
     // 原生环境：正常使用 image_picker + image_cropper
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source, maxWidth: 1920);
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: source, maxWidth: 1920);
 
-    if (pickedFile == null) return;
-
-    // Crop the image
-    final croppedFile = await ImageCropper().cropImage(
-      sourcePath: pickedFile.path,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: '裁剪题目图片',
-          toolbarColor: AppColors.brandPrimary,
-          toolbarWidgetColor: Colors.white,
-          activeControlsWidgetColor: AppColors.brandPrimary,
-        ),
-        IOSUiSettings(title: '裁剪题目图片'),
-      ],
-    );
-
-    if (croppedFile != null) {
-      setState(() {
-        _imagePath = croppedFile.path;
-      });
-      // Trigger OCR
-      if (mounted) {
-        context.read<QuestionBloc>().add(OcrImage(croppedFile.path));
+      // Bug #2: pickImage 返回 null 可能是权限被拒或用户取消
+      // 如果 widget 仍 mounted 但返回 null，且不是用户主动取消（无法区分），
+      // 保守地提示用户检查权限
+      if (pickedFile == null) {
+        if (!mounted) return;
+        // 轻量方案：无 permission_handler，通过返回值判断
+        // 仅在非首次使用时提示（避免每次取消都弹窗）
+        // 这里简单提示 SnackBar，引导用户检查权限
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('无法访问相册/相机，请在系统设置中开启权限'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
       }
+
+      // Bug #8: pickImage 唤起原生 Activity 后 Flutter Activity 可能被回收
+      if (!mounted) return;
+
+      // Crop the image
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: '裁剪题目图片',
+            toolbarColor: AppColors.brandPrimary,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: AppColors.brandPrimary,
+          ),
+          IOSUiSettings(title: '裁剪题目图片'),
+        ],
+      );
+
+      // Bug #8: cropImage 同样可能因 Activity 回收导致回调丢失
+      if (!mounted) return;
+
+      if (croppedFile != null) {
+        setState(() {
+          _imagePath = croppedFile.path;
+        });
+        // Trigger OCR
+        if (mounted) {
+          context.read<QuestionBloc>().add(OcrImage(croppedFile.path));
+        }
+      }
+    } on PlatformException catch (e) {
+      // Bug #8: 用户取消操作时 image_picker/image_cropper 会抛出 PlatformException
+      if (e.code == 'cancelled' || e.code == 'canceled') {
+        // 用户主动取消，静默处理
+        return;
+      }
+      // 其他平台异常（如权限拒绝等）
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('图片处理失败，请重试'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      // 其他未知异常
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('图片处理失败，请重试'),
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 

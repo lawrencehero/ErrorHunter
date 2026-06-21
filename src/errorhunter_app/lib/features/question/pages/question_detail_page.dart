@@ -187,28 +187,33 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: GestureDetector(
-          onTap: () => Navigator.of(context).pop(),
-          child: Icon(Icons.arrow_back_ios_rounded, color: tc.primary, size: 20),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+          onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
           Padding(
             padding: EdgeInsets.only(right: AppSpacing.sm),
             child: GestureDetector(
               onTap: () => _toggleEdit(question),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.edit_outlined, size: 18, color: AppColors.brandPrimary),
-                  SizedBox(width: 2),
-                  Text(
-                    _isEditMode ? '完成' : '编辑',
-                    style: AppTypography.primary.caption.copyWith(
-                      color: AppColors.brandPrimary,
-                      fontWeight: FontWeight.w500,
+              behavior: HitTestBehavior.opaque,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.edit_outlined, size: 18, color: AppColors.brandPrimary),
+                    SizedBox(width: 2),
+                    Text(
+                      _isEditMode ? '完成' : '编辑',
+                      style: AppTypography.primary.caption.copyWith(
+                        color: AppColors.brandPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -216,7 +221,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             padding: EdgeInsets.only(right: AppSpacing.base),
             child: GestureDetector(
               onTap: () => _showMoreMenu(question),
-              child: Icon(Icons.more_horiz_rounded, color: tc.secondary),
+              behavior: HitTestBehavior.opaque,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                child: Center(
+                  child: Icon(Icons.more_horiz_rounded, color: tc.secondary),
+                ),
+              ),
             ),
           ),
         ],
@@ -242,17 +253,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       clipBehavior: Clip.antiAlias,
                       child: question.imageUrl.startsWith('/')
                           ? Image.file(File(question.imageUrl), fit: BoxFit.contain)
-                          : Image.network(
-                              question.imageUrl,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => Container(
-                                height: 120,
-                                color: AppColors.background,
-                                child: Center(
-                                  child: Icon(Icons.image_not_supported, color: tc.tertiary),
-                                ),
-                              ),
-                            ),
+                          : _buildNetworkImage(question.imageUrl, fit: BoxFit.contain),
                     ),
                   ),
                   SizedBox(height: AppSpacing.lg),
@@ -480,5 +481,34 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
 
   String _formatDate(DateTime date) {
     return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// 通用网络图片组件，带 loading 和 error 状态
+  Widget _buildNetworkImage(String url, {BoxFit fit = BoxFit.contain}) {
+    final tc = context.textColors;
+    return Image.network(
+      url,
+      fit: fit,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return Center(
+          child: CircularProgressIndicator(
+            value: loadingProgress.expectedTotalBytes != null
+                ? loadingProgress.cumulativeBytesLoaded /
+                    loadingProgress.expectedTotalBytes!
+                : null,
+            strokeWidth: 2,
+            color: AppColors.brandPrimary,
+          ),
+        );
+      },
+      errorBuilder: (_, __, ___) => Container(
+        height: 120,
+        color: AppColors.background,
+        child: Center(
+          child: Icon(Icons.image_not_supported, color: tc.tertiary),
+        ),
+      ),
+    );
   }
 }

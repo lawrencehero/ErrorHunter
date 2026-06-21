@@ -47,6 +47,7 @@ class _PdfExportPageState extends State<PdfExportPage> {
   _TimeRange _selectedRange = _TimeRange.thisMonth;
   int _currentPage = 0;
   bool _isGenerating = false;
+  late final PageController _pageController;
 
   // TODO: 替换为真实API调用 - 获取可导出的错题列表
   late final List<_ExportQuestionItem> _mockQuestions;
@@ -54,7 +55,14 @@ class _PdfExportPageState extends State<PdfExportPage> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(viewportFraction: 0.85);
     _mockQuestions = _generateMockData();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   List<_ExportQuestionItem> _generateMockData() {
@@ -244,9 +252,7 @@ class _PdfExportPageState extends State<PdfExportPage> {
                             onPageChanged: (index) {
                               setState(() => _currentPage = index);
                             },
-                            controller: PageController(
-                              viewportFraction: 0.85,
-                            ),
+                            controller: _pageController,
                             itemBuilder: (context, index) {
                               final q = filtered[index];
                               return ExportPreviewCard(

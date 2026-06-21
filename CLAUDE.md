@@ -60,14 +60,18 @@ ErrorHunter/
 │       ├── qa/SKILL.md              # /qa 测试单独发言
 │       ├── ops/SKILL.md             # /ops 运维单独发言
 │       ├── ued/SKILL.md             # /ued 设计师单独发言
-│       └── user/SKILL.md            # /user 用户单独发言
+│       ├── user/SKILL.md            # /user 用户单独发言
+│       ├── walkthrough/SKILL.md     # /walkthrough 模拟走查
+│       ├── real-device/SKILL.md     # /real-device 真机 checklist
+│       └── heuristic/SKILL.md       # /heuristic UX 启发式评估
 ├── docs/
 │   ├── README.md
 │   ├── 01-需求分析/
 │   ├── 02-会议纪要/
 │   ├── 03-PRD/
 │   ├── 04-技术设计/
-│   └── 05-设计/                    # UED agent 输出
+│   ├── 05-设计/                    # UED agent 输出
+│   └── 06-测试/                    # 测试报告
 ├── src/                       # Dev agent 输出
 ├── tests/                     # QA agent 输出
 └── deploy/                    # Ops agent 输出
@@ -92,6 +96,9 @@ ErrorHunter/
 | `/ops 任务` | 运维人员单独发言 | 部署方案、监控告警 |
 | `/ued 任务` | UED设计师单独发言 | 交互设计、视觉规范、体验评审 |
 | `/user 任务` | 试用客户单独发言 | 体验反馈、改进建议 |
+| `/walkthrough 功能` | 模拟用户逐步走查 App | 发现 UI/交互/状态 bug |
+| `/real-device 功能` | 真机专属 Checklist 排查 | 设备碎片化、手势、键盘、生命周期 |
+| `/heuristic 功能` | UX 启发式评估（14 条原则） | 系统性发现体验类问题 |
 
 ---
 

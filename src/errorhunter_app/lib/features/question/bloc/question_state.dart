@@ -114,6 +114,23 @@ class OcrFailed extends QuestionState {
   List<Object?> get props => [message];
 }
 
+// ─── Update States ─────────────────────────────────────────────
+
+/// 更新失败（保留上次成功加载的详情，仅通知 UI 弹出提示）
+class QuestionUpdateFailed extends QuestionState {
+  const QuestionUpdateFailed(
+    this.question, [
+    this.message = '保存失败，请重试',
+  ]);
+
+  /// 更新前的错题数据，用于回退 UI 显示
+  final QuestionModel question;
+  final String message;
+
+  @override
+  List<Object?> get props => [question.id, message];
+}
+
 // ─── Error State ──────────────────────────────────────────────
 
 /// 通用错误

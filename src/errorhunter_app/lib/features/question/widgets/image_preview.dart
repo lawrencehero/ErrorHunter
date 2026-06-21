@@ -41,6 +41,19 @@ class _ImagePreviewState extends State<ImagePreview> {
         child: Image.network(
           widget.imageUrl,
           fit: BoxFit.contain,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+                strokeWidth: 2,
+                color: AppColors.brandPrimary,
+              ),
+            );
+          },
           errorBuilder: (_, __, ___) => Container(
             color: Colors.grey.shade100,
             child: Center(
@@ -101,6 +114,15 @@ class _FullScreenImagePreviewState extends State<_FullScreenImagePreview> {
             child: Image.network(
               widget.imageUrl,
               fit: BoxFit.contain,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                );
+              },
               errorBuilder: (_, __, ___) => const Center(
                 child: Icon(Icons.image_not_supported, color: Colors.white54, size: 64),
               ),

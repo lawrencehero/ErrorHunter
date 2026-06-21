@@ -283,24 +283,29 @@ class _RegisterPageState extends State<RegisterPage> {
                         onTap: () =>
                             setState(() => _agreedToTerms = !_agreedToTerms),
                         child: Container(
-                          width: 20,
-                          height: 20,
-                          margin: EdgeInsets.only(top: 2),
-                          decoration: BoxDecoration(
-                            color: _agreedToTerms
-                                ? AppColors.brandPrimary
-                                : Colors.transparent,
-                            borderRadius: AppRadius.radiusSm,
-                            border: Border.all(
+                          width: 48,
+                          height: 48,
+                          alignment: Alignment.centerLeft,
+                          padding: EdgeInsets.only(left: 14, top: 14),
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
                               color: _agreedToTerms
                                   ? AppColors.brandPrimary
-                                  : AppColors.textTertiary,
+                                  : Colors.transparent,
+                              borderRadius: AppRadius.radiusSm,
+                              border: Border.all(
+                                color: _agreedToTerms
+                                    ? AppColors.brandPrimary
+                                    : AppColors.textTertiary,
+                              ),
                             ),
+                            child: _agreedToTerms
+                                ? const Icon(Icons.check,
+                                    size: 14, color: Colors.white)
+                                : null,
                           ),
-                          child: _agreedToTerms
-                              ? const Icon(Icons.check,
-                                  size: 14, color: Colors.white)
-                              : null,
                         ),
                       ),
                       SizedBox(width: AppSpacing.sm),

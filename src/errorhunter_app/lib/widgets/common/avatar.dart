@@ -48,6 +48,10 @@ class EHAvatar extends StatelessWidget {
             ? Image.network(
                 imageUrl!,
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return _buildPlaceholder();
+                },
                 errorBuilder: (_, __, ___) => _buildPlaceholder(),
               )
             : _buildPlaceholder(),

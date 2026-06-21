@@ -1,6 +1,7 @@
 /// 错题猎手 - 注销账号页（3步流程）
 library;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../router/app_router.dart';
@@ -34,11 +35,14 @@ class _DeactivatePageState extends State<DeactivatePage> {
   final _phoneController = TextEditingController(text: '138****8888');
   final _codeController = TextEditingController();
   bool _codeSent = false;
+  int _countdownSeconds = 0;
+  Timer? _countdownTimer;
 
   @override
   void dispose() {
     _phoneController.dispose();
     _codeController.dispose();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -329,22 +333,24 @@ class _DeactivatePageState extends State<DeactivatePage> {
                   ),
                   SizedBox(width: AppSpacing.sm),
                   GestureDetector(
-                    onTap: _codeSent ? null : _sendCode,
+                    onTap: _countdownSeconds > 0 ? null : _sendCode,
                     child: Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: AppSpacing.md,
                         vertical: AppSpacing.sm + 4,
                       ),
                       decoration: BoxDecoration(
-                        color: _codeSent
+                        color: _countdownSeconds > 0
                             ? AppColors.textTertiary.withOpacity(0.2)
                             : AppColors.brandPrimary.withOpacity(0.1),
                         borderRadius: AppRadius.radiusMd,
                       ),
                       child: Text(
-                        _codeSent ? '已发送' : '获取验证码',
+                        _countdownSeconds > 0
+                            ? '重新发送 (${_countdownSeconds}s)'
+                            : '获取验证码',
                         style: AppTypography.primary.caption.copyWith(
-                          color: _codeSent
+                          color: _countdownSeconds > 0
                               ? AppColors.textTertiary
                               : AppColors.brandPrimary,
                           fontWeight: FontWeight.w600,
@@ -371,7 +377,21 @@ class _DeactivatePageState extends State<DeactivatePage> {
 
   void _sendCode() {
     // TODO: 调用发送验证码API
-    setState(() => _codeSent = true);
+    setState(() {
+      _codeSent = true;
+      _countdownSeconds = 60;
+    });
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _countdownSeconds--;
+        if (_countdownSeconds <= 0) timer.cancel();
+      });
+    });
     EHToast.show(context,
         message: '验证码已发送', type: EHToastType.success);
   }

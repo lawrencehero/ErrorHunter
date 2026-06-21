@@ -85,7 +85,7 @@ class _HomePageState extends State<HomePage> {
         ),
         // 层2: 问候语（固定，不随滚动移动）
         Positioned(
-          left: AppSpacing.base, right: AppSpacing.base, top: 50,
+          left: AppSpacing.base, right: AppSpacing.base, top: MediaQuery.of(context).padding.top + 16,
           child: Row(
             children: [
               Expanded(
@@ -194,9 +194,9 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 骨架屏 ───────────────────────────────────────────────
 
-  Widget _buildSkeleton() => const Padding(
-    padding: EdgeInsets.only(top: 68),
-    child: EHSkeletonList(itemCount: 4),
+  Widget _buildSkeleton() => Padding(
+    padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 16),
+    child: const EHSkeletonList(itemCount: 4),
   );
 
   // ─── 可滚动内容 ───────────────────────────────────────────
@@ -212,7 +212,7 @@ class _HomePageState extends State<HomePage> {
               children: [
                 // 玻璃拟态顶栏问候
                 if (isGlass) ...[
-                  const SizedBox(height: 54),
+                  SizedBox(height: MediaQuery.of(context).padding.top + 16),
                   _buildGlassTopBar(),
                   SizedBox(height: AppSpacing.base),
                 ],
@@ -318,24 +318,29 @@ class _HomePageState extends State<HomePage> {
                     fontSize: 13, fontWeight: FontWeight.w600,
                   ),
                 ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text('$_streakDays',
-                      style: TextStyle(
-                        color: isGlass ? const Color(0xFFFFB07A) : Colors.white,
-                        fontSize: isGlass ? 28 : 36, fontWeight: FontWeight.w800, height: 1.0,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('$_streakDays',
+                        style: TextStyle(
+                          color: isGlass ? const Color(0xFFFFB07A) : Colors.white,
+                          fontSize: isGlass ? 28 : 36, fontWeight: FontWeight.w800, height: 1.0,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text('天',
-                      style: TextStyle(
-                        color: isGlass ? Colors.white.withOpacity(0.7) : Colors.white,
-                        fontSize: 16, fontWeight: FontWeight.w700,
+                      const SizedBox(width: 4),
+                      Text('天',
+                        style: TextStyle(
+                          color: isGlass ? Colors.white.withOpacity(0.7) : Colors.white,
+                          fontSize: 16, fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -383,26 +388,31 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('$_pendingReviewCount',
-                style: TextStyle(
-                  color: isGlass ? Colors.white : AppColors.brandPrimary,
-                  fontSize: 56, fontWeight: FontWeight.w800, height: 0.85, letterSpacing: -2,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Text('道错题等你复习',
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('$_pendingReviewCount',
                   style: TextStyle(
-                    color: isGlass ? Colors.white.withOpacity(0.8) : AppColors.textPrimary,
-                    fontSize: 18, fontWeight: FontWeight.w600,
+                    color: isGlass ? Colors.white : AppColors.brandPrimary,
+                    fontSize: 56, fontWeight: FontWeight.w800, height: 0.85, letterSpacing: -2,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text('道错题等你复习',
+                    style: TextStyle(
+                      color: isGlass ? Colors.white.withOpacity(0.8) : AppColors.textPrimary,
+                      fontSize: 18, fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 18),
           // 按钮
@@ -467,10 +477,13 @@ class _HomePageState extends State<HomePage> {
                     ),
               child: Column(
                 children: [
-                  Text(item.$1,
-                    style: TextStyle(
-                      color: isGlass ? Colors.white : item.$3,
-                      fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1, height: 1.0,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(item.$1,
+                      style: TextStyle(
+                        color: isGlass ? Colors.white : item.$3,
+                        fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1, height: 1.0,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),

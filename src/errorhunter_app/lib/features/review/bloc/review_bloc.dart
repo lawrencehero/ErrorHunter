@@ -41,6 +41,10 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     StartReview event,
     Emitter<ReviewState> emit,
   ) async {
+    // 清理可能残留的撤销计时器（如用户退出后重新开始复习）
+    _undoTimer?.cancel();
+    _undoTimer = null;
+
     emit(const ReviewLoading());
 
     _questions = await _reviewRepository.getReviewQueue(
@@ -240,6 +244,9 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     ResetEliminateState event,
     Emitter<ReviewState> emit,
   ) {
+    _undoTimer?.cancel();
+    _undoTimer = null;
+
     final currentState = state;
     if (currentState is EliminateTriggered) {
       // 动画结束，恢复进度并自动下一题

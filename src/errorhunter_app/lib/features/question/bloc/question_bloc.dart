@@ -134,8 +134,12 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
     UpdateQuestion event,
     Emitter<QuestionState> emit,
   ) async {
-    await _questionRepository.updateQuestion(event.question);
-    emit(QuestionDetailLoaded(event.question));
+    try {
+      await _questionRepository.updateQuestion(event.question);
+      emit(QuestionDetailLoaded(event.question));
+    } catch (e) {
+      emit(QuestionUpdateFailed(event.question));
+    }
   }
 
   Future<void> _onDeleteQuestion(

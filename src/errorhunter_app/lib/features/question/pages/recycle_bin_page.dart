@@ -177,7 +177,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(

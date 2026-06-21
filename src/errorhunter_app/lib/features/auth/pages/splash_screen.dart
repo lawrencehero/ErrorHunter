@@ -28,6 +28,15 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
 
+  /// 品牌最短展示时间是否已过
+  bool _minDisplayElapsed = false;
+
+  /// AuthBloc 是否已产出终态（Authenticated / Unauthenticated）
+  bool _authResolved = false;
+
+  /// 最大超时 Timer（5s），防止 AuthBloc 卡死导致白屏
+  Timer? _maxTimeoutTimer;
+
   @override
   void initState() {
     super.initState();
@@ -48,100 +57,145 @@ class _SplashScreenState extends State<SplashScreen>
     // 触发 Auth 检查
     context.read<AuthBloc>().add(const CheckAuthStatus());
 
-    // 1.5秒后根据状态跳转
-    Timer(const Duration(milliseconds: 1500), _navigateAfterDelay);
+    // 最短品牌展示 800ms
+    Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      _minDisplayElapsed = true;
+      _tryNavigate();
+    });
+
+    // 最大超时 5s，超时后跳转登录页
+    _maxTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      if (!_authResolved) {
+        context.go(Routes.login);
+      }
+    });
   }
 
-  void _navigateAfterDelay() {
+  /// 当品牌展示时间已过 且 AuthBloc 已产出终态时执行跳转
+  void _tryNavigate() {
+    if (!_minDisplayElapsed || !_authResolved) return;
     if (!mounted) return;
 
     final authState = context.read<AuthBloc>().state;
     final hasOnboarded = context.read<AuthBloc>().hasOnboarded;
 
+    _maxTimeoutTimer?.cancel();
+
     if (authState is Authenticated) {
-      // 已登录 → 首页
       context.go(Routes.home);
     } else if (hasOnboarded) {
-      // 已完成引导但未登录 → 登录页
       context.go(Routes.login);
     } else {
-      // 首次使用 → 引导页
       context.go(Routes.onboarding);
     }
   }
 
   @override
   void dispose() {
+    _maxTimeoutTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.brandPrimary,
-      body: Center(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: ScaleTransition(
-            scale: _scaleAnimation,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Logo 图标
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        // 仅当状态变为终态时标记已解析并尝试跳转
+        if (state is Authenticated || state is Unauthenticated) {
+          _authResolved = true;
+          _tryNavigate();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.brandPrimary,
+        body: Stack(
+          children: [
+            Center(
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Logo 图标
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.menu_book_rounded,
+                          size: 52,
+                          color: AppColors.brandPrimary,
+                        ),
+                      ),
+                      SizedBox(height: AppSpacing.lg),
+                      // 中文名称
+                      Text(
+                        '错题猎手',
+                        style: AppTypography.primary.h1.copyWith(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: AppSpacing.xs),
+                      // 英文名称
+                      Text(
+                        'ErrorHunter',
+                        style: AppTypography.primary.body.copyWith(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      SizedBox(height: AppSpacing.xxxl),
+                      // Slogan
+                      Text(
+                        '消灭错题，成为学霸猎手',
+                        style: AppTypography.primary.caption.copyWith(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.menu_book_rounded,
-                    size: 52,
-                    color: AppColors.brandPrimary,
-                  ),
                 ),
-                SizedBox(height: AppSpacing.lg),
-                // 中文名称
-                Text(
-                  '错题猎手',
-                  style: AppTypography.primary.h1.copyWith(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.xs),
-                // 英文名称
-                Text(
-                  'ErrorHunter',
-                  style: AppTypography.primary.body.copyWith(
-                    color: Colors.white.withOpacity(0.85),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 2,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.xxxl),
-                // Slogan
-                Text(
-                  '消灭错题，成为学霸猎手',
-                  style: AppTypography.primary.caption.copyWith(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            // 底部加载指示器
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 48,
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.white.withOpacity(0.6),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

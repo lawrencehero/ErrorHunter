@@ -83,6 +83,19 @@ class ExportPreviewCard extends StatelessWidget {
                       imageUrl,
                       fit: BoxFit.cover,
                       width: double.infinity,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                            strokeWidth: 2,
+                            color: AppColors.brandPrimary,
+                          ),
+                        );
+                      },
                       errorBuilder: (_, __, ___) => Container(
                         color: AppColors.background,
                         alignment: Alignment.center,

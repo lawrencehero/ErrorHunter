@@ -56,7 +56,9 @@ class ProfilePage extends StatelessWidget {
                     icon: Icons.person_outline_rounded,
                     label: '个人信息',
                     color: AppColors.brandPrimary,
-                    onTap: () {},
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('个人信息编辑即将上线')),
+                    ),
                   ),
                   _SettingItemData(
                     icon: Icons.notifications_outlined,
@@ -86,7 +88,7 @@ class ProfilePage extends StatelessWidget {
                     icon: Icons.delete_outline_rounded,
                     label: '回收站',
                     color: tc.secondary,
-                    onTap: () {},
+                    onTap: () => context.push(Routes.recycleBin),
                   ),
                   _SettingItemData(
                     icon: Icons.picture_as_pdf_outlined,
@@ -98,14 +100,23 @@ class ProfilePage extends StatelessWidget {
                     icon: Icons.help_outline_rounded,
                     label: '帮助与反馈',
                     color: AppColors.brandSecondary,
-                    onTap: () {},
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('帮助中心即将上线，如有问题请联系客服')),
+                    ),
                   ),
                   _SettingItemData(
                     icon: Icons.info_outline_rounded,
                     label: '关于我们',
                     color: tc.secondary,
                     showDivider: false,
-                    onTap: () {},
+                    onTap: () => showAboutDialog(
+                      context: context,
+                      applicationName: '错题猎手',
+                      applicationVersion: appVersion,
+                      children: [
+                        const Text('采集 → 归因 → 复习 → 消灭\n错题全生命周期管理'),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -192,7 +203,7 @@ class ProfilePage extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    nickname.substring(0, 1),
+                    nickname.isNotEmpty ? nickname.substring(0, 1) : '?',
                     style: AppTypography.primary.h1.copyWith(
                       color: Colors.white,
                     ),

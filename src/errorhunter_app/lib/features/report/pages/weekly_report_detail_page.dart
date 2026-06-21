@@ -183,7 +183,7 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
                       padding: EdgeInsets.only(bottom: AppSpacing.sm),
                       child: Row(
                         children: [
-                          Text(medals[kp.rank - 1] ?? '',
+                          Text((kp.rank >= 1 && kp.rank <= medals.length) ? medals[kp.rank - 1] : '',
                               style: const TextStyle(fontSize: 20)),
                           SizedBox(width: AppSpacing.sm),
                           Expanded(
