@@ -9,7 +9,6 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/theme_manager.dart';
 import '../../../theme/colors.dart';
@@ -97,12 +96,11 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
   bool get _canSave => _selectedErrorCategory != null;
 
   Future<void> _pickImage(ImageSource source) async {
-    // Web 环境：image_cropper 不可用，使用模拟流程
+    // Web 环境：使用模拟流程
     if (kIsWeb) {
       setState(() {
-        _imagePath = 'demo_question.jpg'; // Mock path for web
+        _imagePath = 'demo_question.jpg';
       });
-      // 模拟 OCR 完成
       await Future.delayed(const Duration(milliseconds: 800));
       if (mounted) {
         setState(() {
@@ -114,19 +112,13 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
       return;
     }
 
-    // 原生环境：正常使用 image_picker + image_cropper
+    // 原生环境：拍照/选择图片
     try {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(source: source, maxWidth: 1920);
 
-      // Bug #2: pickImage 返回 null 可能是权限被拒或用户取消
-      // 如果 widget 仍 mounted 但返回 null，且不是用户主动取消（无法区分），
-      // 保守地提示用户检查权限
       if (pickedFile == null) {
         if (!mounted) return;
-        // 轻量方案：无 permission_handler，通过返回值判断
-        // 仅在非首次使用时提示（避免每次取消都弹窗）
-        // 这里简单提示 SnackBar，引导用户检查权限
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('无法访问相册/相机，请在系统设置中开启权限'),
@@ -136,42 +128,23 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
         return;
       }
 
-      // Bug #8: pickImage 唤起原生 Activity 后 Flutter Activity 可能被回收
       if (!mounted) return;
 
-      // Crop the image
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: pickedFile.path,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: '裁剪题目图片',
-            toolbarColor: AppColors.brandPrimary,
-            toolbarWidgetColor: Colors.white,
-            activeControlsWidgetColor: AppColors.brandPrimary,
-          ),
-          IOSUiSettings(title: '裁剪题目图片'),
-        ],
-      );
+      // 跳过裁剪步骤（image_cropper 在部分真机上会崩溃）
+      // 直接使用原始图片，后续版本可替换为内置裁剪组件
+      final imagePath = pickedFile.path;
 
-      // Bug #8: cropImage 同样可能因 Activity 回收导致回调丢失
-      if (!mounted) return;
+      setState(() {
+        _imagePath = imagePath;
+        _ocrStatus = OcrStatus.loading;
+      });
 
-      if (croppedFile != null) {
-        setState(() {
-          _imagePath = croppedFile.path;
-        });
-        // Trigger OCR
-        if (mounted) {
-          context.read<QuestionBloc>().add(OcrImage(croppedFile.path));
-        }
+      // 触发 Mock OCR 识别
+      if (mounted) {
+        context.read<QuestionBloc>().add(OcrImage(imagePath));
       }
     } on PlatformException catch (e) {
-      // Bug #8: 用户取消操作时 image_picker/image_cropper 会抛出 PlatformException
-      if (e.code == 'cancelled' || e.code == 'canceled') {
-        // 用户主动取消，静默处理
-        return;
-      }
-      // 其他平台异常（如权限拒绝等）
+      if (e.code == 'cancelled' || e.code == 'canceled') return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -180,7 +153,6 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
         ),
       );
     } catch (_) {
-      // 其他未知异常
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
