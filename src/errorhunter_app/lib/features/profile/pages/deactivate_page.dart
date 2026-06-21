@@ -138,6 +138,51 @@ class _DeactivatePageState extends State<DeactivatePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 家长协助提示卡片
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF3E0), // 浅橙色背景
+            borderRadius: AppRadius.radiusMd,
+            border: Border.all(
+              color: const Color(0xFFFFB74D).withOpacity(0.5),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.supervised_user_circle,
+                size: 28,
+                color: const Color(0xFFE65100),
+              ),
+              SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '此操作需要家长协助完成',
+                      style: AppTypography.primary.body.copyWith(
+                        color: const Color(0xFFE65100),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '如果你是小学生，请让爸爸妈妈帮你操作哦',
+                      style: AppTypography.primary.caption.copyWith(
+                        color: const Color(0xFFBF360C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: AppSpacing.base),
         EHBaseCard(
           border: Border.all(color: AppColors.danger.withOpacity(0.3)),
           child: Column(

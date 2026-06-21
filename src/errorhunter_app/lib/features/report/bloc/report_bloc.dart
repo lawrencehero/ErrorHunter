@@ -21,8 +21,12 @@ class ReportBloc extends Bloc<ReportEvent, ReportState> {
   ) async {
     emit(const ReportLoading());
 
-    final reports = await _reportRepository.getWeeklySummaries();
-    emit(WeeklyReportsLoaded(reports));
+    try {
+      final reports = await _reportRepository.getWeeklySummaries();
+      emit(WeeklyReportsLoaded(reports));
+    } catch (e) {
+      emit(ReportError('加载周报列表失败：${e.toString()}'));
+    }
   }
 
   Future<void> _onLoadWeeklyReportDetail(
@@ -31,8 +35,12 @@ class ReportBloc extends Bloc<ReportEvent, ReportState> {
   ) async {
     emit(const ReportLoading());
 
-    final report =
-        await _reportRepository.getWeeklyReportDetail(event.reportId);
-    emit(WeeklyReportDetailLoaded(report));
+    try {
+      final report =
+          await _reportRepository.getWeeklyReportDetail(event.reportId);
+      emit(WeeklyReportDetailLoaded(report));
+    } catch (e) {
+      emit(ReportError('加载周报详情失败：${e.toString()}'));
+    }
   }
 }

@@ -51,24 +51,22 @@ class _Particle {
 
 /// 撒花粒子 Painter
 class ConfettiPainter extends CustomPainter {
-  ConfettiPainter({
-    required this.progress,
-    int particleCount = 70,
-  }) : _particles = [] {
-    final random = math.Random(42); // 固定种子保证一致性
-    for (int i = 0; i < particleCount; i++) {
-      _particles.add(_Particle(random));
-    }
-  }
+  ConfettiPainter({required this.progress});
 
   final double progress; // 0.0 ~ 1.0
-  final List<_Particle> _particles;
+
+  /// 类级别共享的粒子列表，固定种子保证一致性，避免每次 rebuild 重建 70 个对象
+  static final List<_Particle> _sharedParticles = () {
+    final random = math.Random(42);
+    const particleCount = 70;
+    return List.generate(particleCount, (_) => _Particle(random));
+  }();
 
   @override
   void paint(Canvas canvas, Size size) {
     if (progress <= 0) return;
 
-    for (final p in _particles) {
+    for (final p in _sharedParticles) {
       // 更新位置（基于 progress 模拟时间）
       final simProgress = progress.clamp(0.0, 1.0);
       final px = (p.x + p.vx * simProgress * 60) * size.width;

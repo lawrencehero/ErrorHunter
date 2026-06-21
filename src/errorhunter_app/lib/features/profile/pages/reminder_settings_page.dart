@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/theme_manager.dart';
 import '../../../theme/radius.dart';
@@ -29,6 +30,40 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
   TimeOfDay _reminderTime = const TimeOfDay(hour: 19, minute: 0);
   int _dailyLimit = 15;
   bool _eliminateAnimationEnabled = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _reminderEnabled = prefs.getBool('reminder_enabled') ?? true;
+      final hour = prefs.getInt('reminder_hour') ?? 19;
+      final minute = prefs.getInt('reminder_minute') ?? 0;
+      _reminderTime = TimeOfDay(hour: hour, minute: minute);
+      _dailyLimit = prefs.getInt('daily_limit') ?? 15;
+      _eliminateAnimationEnabled = prefs.getBool('eliminate_animation') ?? true;
+    });
+  }
+
+  Future<void> _saveSettings() async {
+    setState(() => _isSaving = true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('reminder_enabled', _reminderEnabled);
+    await prefs.setInt('reminder_hour', _reminderTime.hour);
+    await prefs.setInt('reminder_minute', _reminderTime.minute);
+    await prefs.setInt('daily_limit', _dailyLimit);
+    await prefs.setBool('eliminate_animation', _eliminateAnimationEnabled);
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    EHToast.show(context, message: '设置已保存', type: EHToastType.success);
+    context.pop();
+  }
 
   // 可选时间段：18:00-22:00，半小时步长
   List<TimeOfDay> get _availableTimes {
@@ -346,12 +381,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
             // ─── 保存按钮 ──────────────────────────────
             EHPrimaryButton(
               text: '保存设置',
-              onPressed: () {
-                // TODO: 调用API保存设置
-                EHToast.show(context,
-                    message: '设置已保存', type: EHToastType.success);
-                context.pop();
-              },
+              onPressed: _isSaving ? null : _saveSettings,
               size: EHButtonSize.lg,
               fullWidth: true,
             ),

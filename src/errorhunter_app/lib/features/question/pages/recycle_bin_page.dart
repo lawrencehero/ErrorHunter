@@ -2,6 +2,7 @@
 /// 展示已删除错题列表，支持左滑恢复/永久删除，30天自动清理提示
 library;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
@@ -310,6 +311,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
     return Dismissible(
       key: Key(item.id),
       direction: DismissDirection.horizontal,
+      dragStartBehavior: DragStartBehavior.down,
       background: _buildSwipeBackground(
         alignment: Alignment.centerLeft,
         icon: Icons.restore,

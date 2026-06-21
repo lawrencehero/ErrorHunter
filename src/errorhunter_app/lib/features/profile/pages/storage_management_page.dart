@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/theme_manager.dart';
@@ -56,7 +57,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
     return List.generate(20, (i) {
       return _CachedImageItem(
         id: 'img_$i',
-        thumbnailUrl: 'https://placeholder.com/thumb_$i.jpg',
+        thumbnailUrl: '',
         date: now.subtract(Duration(days: i * 2)),
         sizeBytes: (1024 * 1024 * (0.5 + (i % 5) * 0.3)).toInt(),
       );
@@ -186,6 +187,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
     final tc = context.textColors;
     return GestureDetector(
       onTap: () {
+        HapticFeedback.lightImpact();
         setState(() {
           if (isSelected) {
             _selectedIds.remove(img.id);
@@ -194,79 +196,84 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
           }
         });
       },
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.radiusMd,
-          border: Border.all(
-            color: isSelected ? AppColors.brandPrimary : AppColors.border,
-            width: isSelected ? 2 : 0.5,
+      child: AnimatedScale(
+        scale: isSelected ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeInOut,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.radiusMd,
+            border: Border.all(
+              color: isSelected ? AppColors.brandPrimary : AppColors.border,
+              width: isSelected ? 2 : 0.5,
+            ),
           ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 缩略图
-            Image.network(
-              img.thumbnailUrl,
-              fit: BoxFit.cover,
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return Center(
-                  child: CircularProgressIndicator(
-                    value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
-                        : null,
-                    strokeWidth: 2,
-                    color: AppColors.brandPrimary,
-                  ),
-                );
-              },
-              errorBuilder: (_, __, ___) => Container(
-                color: AppColors.background,
-                child: Icon(Icons.image_outlined,
-                    size: 32, color: tc.tertiary),
-              ),
-            ),
-            // 选中遮罩
-            if (isSelected)
-              Container(
-                color: AppColors.brandPrimary.withOpacity(0.3),
-                alignment: Alignment.topRight,
-                padding: const EdgeInsets.all(4),
-                child: const Icon(Icons.check_circle_rounded,
-                    size: 22, color: Colors.white),
-              ),
-            // 底部信息
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 4, vertical: 3),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.6),
-                    ],
-                  ),
-                ),
-                child: Text(
-                  '${img.date.month}/${img.date.day} · ${_formatBytes(img.sizeBytes)}',
-                  style: AppTypography.primary.caption.copyWith(
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 缩略图
+              Image.network(
+                img.thumbnailUrl,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                      strokeWidth: 2,
+                      color: AppColors.brandPrimary,
+                    ),
+                  );
+                },
+                errorBuilder: (_, __, ___) => Container(
+                  color: AppColors.background,
+                  child: Icon(Icons.image_outlined,
+                      size: 32, color: tc.tertiary),
                 ),
               ),
-            ),
-          ],
+              // 选中遮罩
+              if (isSelected)
+                Container(
+                  color: AppColors.brandPrimary.withOpacity(0.3),
+                  alignment: Alignment.topRight,
+                  padding: const EdgeInsets.all(4),
+                  child: const Icon(Icons.check_circle_rounded,
+                      size: 22, color: Colors.white),
+                ),
+              // 底部信息
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 4, vertical: 3),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.6),
+                      ],
+                    ),
+                  ),
+                  child: Text(
+                    '${img.date.month}/${img.date.day} · ${_formatBytes(img.sizeBytes)}',
+                    style: AppTypography.primary.caption.copyWith(
+                      fontSize: 10,
+                      color: Colors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

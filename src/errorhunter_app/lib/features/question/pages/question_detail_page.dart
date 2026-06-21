@@ -37,6 +37,9 @@ class QuestionDetailPage extends StatefulWidget {
 class _QuestionDetailPageState extends State<QuestionDetailPage> {
   bool _isEditMode = false;
 
+  // Bug #28: 跟踪可折叠区块的展开状态（默认全部折叠）
+  final Set<String> _expandedSections = {};
+
   // Edit controllers
   late TextEditingController _ocrController;
   late TextEditingController _myAnswerController;
@@ -400,32 +403,45 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   SizedBox(height: AppSpacing.lg),
                 ],
 
-                // ── Solution Steps ─────────────────────────────
+                // ── Solution Steps (Collapsible) ────────────────
                 if (question.solutionSteps.isNotEmpty) ...[
-                  SolutionSteps(steps: question.solutionSteps),
+                  _buildCollapsibleSection(
+                    sectionId: 'solution',
+                    title: '解题步骤',
+                    icon: Icons.lightbulb_outline,
+                    child: SolutionSteps(steps: question.solutionSteps),
+                  ),
                   SizedBox(height: AppSpacing.lg),
                 ],
 
-                // ── Review History ─────────────────────────────
-                ReviewHistoryTimeline(records: question.reviewHistory),
+                // ── Review History (Collapsible) ────────────────
+                _buildCollapsibleSection(
+                  sectionId: 'history',
+                  title: '复习历史',
+                  icon: Icons.history_rounded,
+                  child: ReviewHistoryTimeline(records: question.reviewHistory),
+                ),
 
                 SizedBox(height: AppSpacing.lg),
 
-                // ── Custom Tags ────────────────────────────────
+                // ── Custom Tags (Collapsible) ───────────────────
                 if (question.customTags.isNotEmpty) ...[
-                  Text('自定义标签', style: AppTypography.primary.h3.copyWith(color: tc.primary)),
-                  SizedBox(height: AppSpacing.sm),
-                  Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: AppSpacing.sm,
-                    children: question.customTags.map((tag) => Container(
-                          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-                          decoration: BoxDecoration(
-                            color: AppColors.brandPrimary.withOpacity(0.1),
-                            borderRadius: AppRadius.radiusFull,
-                          ),
-                          child: Text(tag, style: AppTypography.primary.caption.copyWith(color: AppColors.brandPrimary)),
-                        )).toList(),
+                  _buildCollapsibleSection(
+                    sectionId: 'tags',
+                    title: '自定义标签',
+                    icon: Icons.label_outline,
+                    child: Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      children: question.customTags.map((tag) => Container(
+                            padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: AppColors.brandPrimary.withOpacity(0.1),
+                              borderRadius: AppRadius.radiusFull,
+                            ),
+                            child: Text(tag, style: AppTypography.primary.caption.copyWith(color: AppColors.brandPrimary)),
+                          )).toList(),
+                    ),
                   ),
                 ],
 
@@ -465,8 +481,12 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   : EHPrimaryButton(
                       text: '开始复习此题',
                       onPressed: () {
-                        // TODO: Navigate to review page
-                        EHToast.show(context, message: '复习功能即将上线...', type: EHToastType.info);
+                        // TODO: 单题复习功能开发中，后续接入 Routes.review
+                        EHToast.show(
+                          context,
+                          message: '单题复习功能开发中，请使用复习模块进行复习',
+                          type: EHToastType.info,
+                        );
                       },
                       fullWidth: true,
                       size: EHButtonSize.lg,
@@ -476,6 +496,68 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Bug #28: 可折叠区块组件
+  Widget _buildCollapsibleSection({
+    required String sectionId,
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    final tc = context.textColors;
+    final isExpanded = _expandedSections.contains(sectionId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              if (isExpanded) {
+                _expandedSections.remove(sectionId);
+              } else {
+                _expandedSections.add(sectionId);
+              }
+            });
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: AppColors.brandPrimary),
+                SizedBox(width: AppSpacing.xs),
+                Text(
+                  title,
+                  style: AppTypography.primary.h3.copyWith(color: tc.primary),
+                ),
+                const Spacer(),
+                AnimatedRotation(
+                  turns: isExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: tc.tertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Padding(
+            padding: EdgeInsets.only(top: AppSpacing.sm),
+            child: child,
+          ),
+          crossFadeState: isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 200),
+        ),
+      ],
     );
   }
 

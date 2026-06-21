@@ -57,13 +57,32 @@ class OnboardingPage extends StatefulWidget {
   State<OnboardingPage> createState() => _OnboardingPageState();
 }
 
-class _OnboardingPageState extends State<OnboardingPage> {
+class _OnboardingPageState extends State<OnboardingPage>
+    with TickerProviderStateMixin {
   final _pageController = PageController();
   int _currentPage = 0;
+
+  /// 第二屏翻卡动画控制器
+  late AnimationController _flipController;
+  late Animation<double> _flipAnimation;
+  bool _flipTriggered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _flipController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _flipAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _flipController, curve: Curves.easeInOut),
+    );
+  }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _flipController.dispose();
     super.dispose();
   }
 
@@ -90,8 +109,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
             PageView.builder(
               controller: _pageController,
               itemCount: _pages.length,
-              onPageChanged: (index) => setState(() => _currentPage = index),
-              itemBuilder: (context, index) => _buildPage(_pages[index]),
+              onPageChanged: (index) {
+                setState(() => _currentPage = index);
+                // 滑到第二屏时触发翻卡动画
+                if (index == 1 && !_flipTriggered) {
+                  _flipTriggered = true;
+                  _flipController.forward();
+                }
+              },
+              itemBuilder: (context, index) =>
+                  index == 1 ? _buildFlipCardPage(_pages[index]) : _buildPage(_pages[index]),
             ),
 
             // 右上角跳过按钮（第3屏隐藏）
@@ -101,20 +128,24 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 right: AppSpacing.base,
                 child: GestureDetector(
                   onTap: _onSkip,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                      vertical: AppSpacing.sm,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.8),
-                      borderRadius: AppRadius.radiusFull,
-                    ),
-                    child: Text(
-                      '跳过',
-                      style: AppTypography.primary.caption.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w500,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.8),
+                        borderRadius: AppRadius.radiusFull,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '跳过',
+                        style: AppTypography.primary.caption.copyWith(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ),
@@ -165,6 +196,85 @@ class _OnboardingPageState extends State<OnboardingPage> {
           Text(
             data.emoji,
             style: const TextStyle(fontSize: 96),
+          ),
+          SizedBox(height: AppSpacing.xxxl),
+          // 标题
+          Text(
+            data.title,
+            textAlign: TextAlign.center,
+            style: AppTypography.primary.h1.copyWith(
+              color: AppColors.textPrimary,
+            ),
+          ),
+          SizedBox(height: AppSpacing.md),
+          // 副标题
+          Text(
+            data.subtitle,
+            textAlign: TextAlign.center,
+            style: AppTypography.primary.body.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 第二屏：带翻卡交互动画的页面
+  Widget _buildFlipCardPage(_OnboardingData data) {
+    return Container(
+      color: data.bgColor,
+      padding: AppSpacing.pagePadding,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 翻转卡片动画
+          AnimatedBuilder(
+            animation: _flipAnimation,
+            builder: (context, child) {
+              final angle = _flipAnimation.value * 3.14159; // 0 → π (180°)
+              final isBack = _flipAnimation.value > 0.5;
+              return Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001) // 透视效果
+                  ..rotateY(angle),
+                child: Container(
+                  width: 160,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: isBack ? AppColors.brandPrimary : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: isBack
+                      ? const Icon(Icons.check_circle_rounded,
+                          size: 64, color: Colors.white)
+                      : Text(data.emoji, style: const TextStyle(fontSize: 72)),
+                ),
+              );
+            },
+          ),
+          SizedBox(height: AppSpacing.lg),
+          // 交互提示文字
+          AnimatedOpacity(
+            opacity: _flipAnimation.value > 0.8 ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            child: Text(
+              '试试翻动卡片！',
+              style: AppTypography.primary.caption.copyWith(
+                color: AppColors.brandPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
           ),
           SizedBox(height: AppSpacing.xxxl),
           // 标题

@@ -329,7 +329,7 @@ class _HomePageState extends State<HomePage> {
                       Text('$_streakDays',
                         style: TextStyle(
                           color: isGlass ? const Color(0xFFFFB07A) : Colors.white,
-                          fontSize: isGlass ? 28 : 36, fontWeight: FontWeight.w800, height: 1.0,
+                          fontSize: isGlass ? 32 : 36, fontWeight: FontWeight.w800, height: 1.0,
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -612,8 +612,9 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildWeekCard(AppThemeExtension ext, bool isGlass) {
     const labels = ['一', '二', '三', '四', '五', '六', '日'];
-    final completed = [true, true, true, false, true, false, false];
-    final today = DateTime.now().weekday - 1;
+    // TODO: 后续应从 API 获取真实打卡数据
+    final today = DateTime.now().weekday; // 1=Mon, 7=Sun
+    final completed = List.generate(7, (i) => i < today - 1); // 今天之前的都已完成
 
     return Container(
       width: double.infinity,
@@ -669,7 +670,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(7, (i) {
               final isDone = completed[i];
-              final isToday = i == today;
+              final isToday = i == today - 1;
               return Column(
                 children: [
                   Text(labels[i],
@@ -701,7 +702,7 @@ class _HomePageState extends State<HomePage> {
                     child: isDone
                         ? const Icon(Icons.check, size: 18, color: Colors.white)
                         : isToday
-                            ? Text('${today + 1}',
+                            ? Text('$today',
                                 style: TextStyle(
                                   color: isGlass ? Colors.white : AppColors.brandPrimary,
                                   fontSize: 12, fontWeight: FontWeight.w800,
@@ -727,7 +728,7 @@ class _DotPatternPainter extends CustomPainter {
     final paint = Paint()
       ..color = Colors.white.withOpacity(0.08)
       ..style = PaintingStyle.fill;
-    const spacing = 16.0;
+    const spacing = 24.0;
     for (double x = 0; x < size.width; x += spacing) {
       for (double y = 0; y < size.height; y += spacing) {
         canvas.drawCircle(Offset(x, y), 1.5, paint);

@@ -32,6 +32,7 @@ import '../widgets/image_crop_section.dart';
 import '../widgets/ocr_text_section.dart';
 import '../widgets/error_category_selector.dart';
 import '../widgets/knowledge_point_selector.dart';
+import '../widgets/image_preview.dart';
 
 /// 错题录入页
 class AddQuestionPage extends StatefulWidget {
@@ -361,7 +362,10 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
           if (_imagePath != null) ...[
             GestureDetector(
               onTap: () {
-                // TODO: Show full screen preview
+                // Bug #40: 使用 ImagePreview 全屏预览
+                if (!kIsWeb && _imagePath != 'demo_question.jpg') {
+                  ImagePreview.show(context, _imagePath!);
+                }
               },
               child: Container(
                 width: double.infinity,
@@ -637,9 +641,24 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
           ),
           TextButton(
             onPressed: () {
-              if (_tagController.text.trim().isNotEmpty) {
+              final tagText = _tagController.text.trim();
+              if (tagText.isNotEmpty) {
+                // Bug #39: 检查标签是否已存在（trim 后比较）
+                final isDuplicate = _customTags.any(
+                  (t) => t.toLowerCase() == tagText.toLowerCase(),
+                );
+                if (isDuplicate) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('该标签已存在'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  Navigator.pop(ctx);
+                  return;
+                }
                 setState(() {
-                  _customTags.add(_tagController.text.trim());
+                  _customTags.add(tagText);
                 });
                 _tagController.clear();
               }

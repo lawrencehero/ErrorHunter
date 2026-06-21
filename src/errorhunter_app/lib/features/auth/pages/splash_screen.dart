@@ -166,7 +166,7 @@ class _SplashScreenState extends State<SplashScreen>
                       SizedBox(height: AppSpacing.xxxl),
                       // Slogan
                       Text(
-                        '消灭错题，成为学霸猎手',
+                        '消灭错题，每天进步一点点',
                         style: AppTypography.primary.caption.copyWith(
                           color: Colors.white.withOpacity(0.7),
                           fontSize: 14,

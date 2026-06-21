@@ -31,6 +31,7 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _phoneController = TextEditingController();
+  final _otpFirstFocusNode = FocusNode();
   String _phoneDigits = '';
   String _otpCode = '';
   String? _selectedGrade;
@@ -44,6 +45,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void dispose() {
     _phoneController.dispose();
+    _otpFirstFocusNode.dispose();
     _countdownTimer?.cancel();
     super.dispose();
   }
@@ -144,8 +146,11 @@ class _RegisterPageState extends State<RegisterPage> {
         return Scaffold(
           backgroundColor: AppColors.background,
           body: SafeArea(
-            child: SingleChildScrollView(
-              padding: AppSpacing.pagePadding,
+            child: GestureDetector(
+              onTap: () => FocusScope.of(context).unfocus(),
+              behavior: HitTestBehavior.translucent,
+              child: SingleChildScrollView(
+                padding: AppSpacing.pagePadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -177,8 +182,13 @@ class _RegisterPageState extends State<RegisterPage> {
                   // ─── Phone Input ───────────────────────────
                   EHPhoneInput(
                     controller: _phoneController,
-                    onChanged: (digits) =>
-                        setState(() => _phoneDigits = digits),
+                    onChanged: (digits) {
+                      setState(() => _phoneDigits = digits);
+                      // 手机号满 11 位后自动聚焦到 OTP 输入框
+                      if (digits.length == 11) {
+                        _otpFirstFocusNode.requestFocus();
+                      }
+                    },
                   ),
                   SizedBox(height: AppSpacing.base),
 
@@ -191,6 +201,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           onCompleted: (code) =>
                               setState(() => _otpCode = code),
                           autoFocus: false,
+                          firstFocusNode: _otpFirstFocusNode,
                         ),
                       ),
                       SizedBox(width: AppSpacing.md),
@@ -376,6 +387,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 ],
               ),
             ),
+          ),
           ),
         );
       },

@@ -343,7 +343,13 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
           // 设置图标（占位保持居中）
           IconButton(
             onPressed: () {
-              // TODO: 打开复习设置
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('复习设置即将上线 🚀'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
             },
             icon: const Icon(Icons.settings_outlined, size: 24),
             color: tc.secondary,

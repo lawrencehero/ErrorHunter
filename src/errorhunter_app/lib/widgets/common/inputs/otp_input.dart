@@ -18,6 +18,7 @@ class EHOtpInput extends StatefulWidget {
     this.errorText,
     this.enabled = true,
     this.autoFocus = true,
+    this.firstFocusNode,
   });
 
   /// 输入完成回调，参数为完整验证码字符串
@@ -35,6 +36,9 @@ class EHOtpInput extends StatefulWidget {
   /// 是否自动聚焦
   final bool autoFocus;
 
+  /// 外部传入的第一个输入框 FocusNode，用于外部控制焦点
+  final FocusNode? firstFocusNode;
+
   @override
   State<EHOtpInput> createState() => _EHOtpInputState();
 }
@@ -43,12 +47,19 @@ class _EHOtpInputState extends State<EHOtpInput> {
   late List<TextEditingController> _controllers;
   late List<FocusNode> _focusNodes;
   late List<String> _values;
+  bool _isProcessingPaste = false;
 
   @override
   void initState() {
     super.initState();
     _controllers = List.generate(widget.length, (_) => TextEditingController());
-    _focusNodes = List.generate(widget.length, (_) => FocusNode());
+    _focusNodes = List.generate(widget.length, (i) {
+      // 第一个输入框使用外部传入的 FocusNode（如果有）
+      if (i == 0 && widget.firstFocusNode != null) {
+        return widget.firstFocusNode!;
+      }
+      return FocusNode();
+    });
     _values = List.filled(widget.length, '');
 
     // 添加焦点监听
@@ -64,14 +75,20 @@ class _EHOtpInputState extends State<EHOtpInput> {
     for (final c in _controllers) {
       c.dispose();
     }
-    for (final f in _focusNodes) {
-      f.dispose();
+    for (int i = 0; i < _focusNodes.length; i++) {
+      // 外部传入的 FocusNode 由外部负责 dispose
+      if (i == 0 && widget.firstFocusNode != null) continue;
+      _focusNodes[i].dispose();
     }
     super.dispose();
   }
 
   void _onChanged(int index, String value) {
+    // 粘贴处理期间忽略后续 onChanged 调用，防止第三方输入法重复触发
+    if (_isProcessingPaste) return;
+
     if (value.length > 1) {
+      _isProcessingPaste = true;
       // 处理粘贴多位数字
       final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
       for (int i = 0; i < digits.length && (index + i) < widget.length; i++) {
@@ -83,6 +100,10 @@ class _EHOtpInputState extends State<EHOtpInput> {
         _focusNodes[nextIndex].requestFocus();
       }
       _checkComplete();
+      // 200ms 后重置标志
+      Future.delayed(const Duration(milliseconds: 200), () {
+        _isProcessingPaste = false;
+      });
       return;
     }
 

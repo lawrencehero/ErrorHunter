@@ -38,6 +38,19 @@ class _QuestionListPageState extends State<QuestionListPage>
   ErrorCategory? _filterCategory;
   String? _filterKnowledgePoint;
 
+  /// 是否有任意筛选条件不为默认值
+  bool get _hasActiveFilters =>
+      _filterCategory != null || _filterKnowledgePoint != null;
+
+  /// 一键重置所有筛选条件
+  void _resetFilters() {
+    setState(() {
+      _filterCategory = null;
+      _filterKnowledgePoint = null;
+    });
+    context.read<QuestionBloc>().add(const LoadQuestions(refresh: true));
+  }
+
   static const _statusTabs = [
     null, // 全部
     QuestionStatus.notStarted,
@@ -223,9 +236,44 @@ class _QuestionListPageState extends State<QuestionListPage>
                 DropdownMenuItem(value: 'month', child: Text('本月')),
               ],
               onChanged: (_) {
-                // TODO: Implement time filter
+                // TODO: BLoC 尚不支持时间筛选事件，待后续实现
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('时间筛选即将上线'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
               },
             ),
+            // Bug #27: 一键重置按钮
+            if (_hasActiveFilters) ...[
+              SizedBox(width: AppSpacing.sm),
+              GestureDetector(
+                onTap: _resetFilters,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.danger.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
+                      const SizedBox(width: 4),
+                      Text(
+                        '重置',
+                        style: AppTypography.primary.caption.copyWith(
+                          color: AppColors.danger,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -251,14 +299,20 @@ class _QuestionListPageState extends State<QuestionListPage>
               context.read<QuestionBloc>().add(const LoadQuestions(refresh: true));
             },
             child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: AppSpacing.pagePadding.copyWith(
                 top: AppSpacing.sm,
                 bottom: AppSpacing.xxl,
               ),
-              itemCount: state.questions.length + (state.hasMore ? 1 : 0),
+              // Bug #46: +1 for load-more or end-of-list indicator
+              itemCount: state.questions.length + 1,
               separatorBuilder: (_, __) => SizedBox(height: AppSpacing.sm),
               itemBuilder: (context, index) {
                 if (index >= state.questions.length) {
+                  // Bug #46: Show end-of-list indicator when no more data
+                  if (!state.hasMore) {
+                    return _buildEndOfList();
+                  }
                   // Load more trigger
                   return _buildLoadMore(state);
                 }
@@ -290,10 +344,7 @@ class _QuestionListPageState extends State<QuestionListPage>
           );
         }
 
-        // Initial state - trigger load
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          context.read<QuestionBloc>().add(const LoadQuestions(refresh: true));
-        });
+        // Initial state - show skeleton (load already triggered in initState)
         return const EHSkeletonList(itemCount: 6);
       },
     );
@@ -328,6 +379,22 @@ class _QuestionListPageState extends State<QuestionListPage>
             ),
           ),
       ],
+    );
+  }
+
+  /// Bug #46: 列表底部"已经到底了"提示
+  Widget _buildEndOfList() {
+    final tc = context.textColors;
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+      child: Center(
+        child: Text(
+          '— 已经到底了 —',
+          style: AppTypography.primary.caption.copyWith(
+            color: tc.tertiary,
+          ),
+        ),
+      ),
     );
   }
 
