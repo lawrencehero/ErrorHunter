@@ -176,7 +176,7 @@ class _QuestionListPageState extends State<QuestionListPage>
       color: Colors.transparent,
       padding: EdgeInsets.fromLTRB(
         AppSpacing.base,
-        0,
+        AppSpacing.sm,
         AppSpacing.base,
         AppSpacing.sm,
       ),

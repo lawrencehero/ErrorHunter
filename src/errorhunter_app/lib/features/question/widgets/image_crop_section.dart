@@ -43,8 +43,9 @@ class _ImageCropSectionState extends State<ImageCropSection> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 图片预览区域
-        Expanded(
+        // 图片预览区域（限制高度，防止按钮被挤出屏幕）
+        Flexible(
+          flex: 3,
           child: Container(
             margin: AppSpacing.pagePadding,
             decoration: BoxDecoration(

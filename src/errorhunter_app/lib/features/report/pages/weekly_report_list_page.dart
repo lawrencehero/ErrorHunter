@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/theme_manager.dart';
+import '../../../theme/app_theme_mode.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
@@ -100,6 +101,7 @@ class _ReportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.headerStyle == HeaderStyle.transparent;
     final dateRange =
         '${report.startDate.month}/${report.startDate.day} - ${report.endDate.month}/${report.endDate.day}';
 
@@ -142,7 +144,7 @@ class _ReportCard extends StatelessWidget {
               vertical: AppSpacing.sm,
             ),
             decoration: BoxDecoration(
-              color: AppColors.background,
+              color: isGlass ? Colors.white.withOpacity(0.08) : AppColors.background,
               borderRadius: AppRadius.radiusMd,
             ),
             child: Row(
@@ -151,19 +153,19 @@ class _ReportCard extends StatelessWidget {
                 _StatItem(
                   label: '新增',
                   value: '${report.newCount}',
-                  color: AppColors.brandPrimary,
+                  color: isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary,
                 ),
-                _buildDivider(),
+                _buildDivider(isGlass),
                 _StatItem(
                   label: '消灭',
                   value: '${report.eliminatedCount}',
-                  color: AppColors.success,
+                  color: isGlass ? const Color(0xFF81C784) : AppColors.success,
                 ),
-                _buildDivider(),
+                _buildDivider(isGlass),
                 _StatItem(
                   label: '复习',
                   value: '${report.reviewCount}次',
-                  color: AppColors.brandSecondary,
+                  color: isGlass ? const Color(0xFFCE93D8) : AppColors.brandSecondary,
                 ),
               ],
             ),
@@ -175,7 +177,7 @@ class _ReportCard extends StatelessWidget {
             child: Text(
               '查看详情 →',
               style: AppTypography.primary.caption.copyWith(
-                color: AppColors.brandPrimary,
+                color: isGlass ? const Color(0xFF90CAF9) : AppColors.brandPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -185,11 +187,11 @@ class _ReportCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDivider() {
+  Widget _buildDivider(bool isGlass) {
     return Container(
       width: 0.5,
       height: 24,
-      color: AppColors.border,
+      color: isGlass ? Colors.white.withOpacity(0.2) : AppColors.border,
     );
   }
 }

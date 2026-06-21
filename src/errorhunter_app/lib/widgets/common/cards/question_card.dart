@@ -121,13 +121,13 @@ class _EHQuestionCardState extends State<EHQuestionCard> {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.brandPrimaryPale,
+                                  color: isGlass ? Colors.white.withOpacity(0.15) : AppColors.brandPrimaryPale,
                                   borderRadius: AppRadius.radiusFull,
                                 ),
                                 child: Text(
                                   data.subject,
                                   style: AppTypography.primary.caption.copyWith(
-                                    color: AppColors.brandPrimary,
+                                    color: isGlass ? Colors.white : AppColors.brandPrimary,
                                     fontWeight: FontWeight.w600,
                                     fontSize: 11,
                                   ),
@@ -167,7 +167,7 @@ class _EHQuestionCardState extends State<EHQuestionCard> {
                                     vertical: 2,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.background,
+                                    color: isGlass ? Colors.white.withOpacity(0.1) : AppColors.background,
                                     borderRadius: AppRadius.radiusFull,
                                   ),
                                   child: Text(
@@ -201,13 +201,17 @@ class _EHQuestionCardState extends State<EHQuestionCard> {
   }
 
   Widget _buildThumbnail() {
+    final isGlass = context.themeExt.headerStyle == HeaderStyle.transparent;
     return Container(
       width: 60,
       height: 60,
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: isGlass ? Colors.white.withOpacity(0.08) : AppColors.background,
         borderRadius: AppRadius.radiusMd,
-        border: Border.all(color: AppColors.border.withOpacity(0.5), width: 1.5),
+        border: Border.all(
+          color: isGlass ? Colors.white.withOpacity(0.15) : AppColors.border.withOpacity(0.5),
+          width: 1.5,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: data.thumbnailUrl != null

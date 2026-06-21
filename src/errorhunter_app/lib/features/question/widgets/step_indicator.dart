@@ -27,13 +27,15 @@ class StepIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 步骤数字
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(totalSteps * 2 - 1, (i) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 步骤数字
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(totalSteps * 2 - 1, (i) {
             if (i.isOdd) {
               // 连接线
               final stepBefore = (i ~/ 2) + 1;
@@ -85,6 +87,7 @@ class StepIndicator extends StatelessWidget {
           }),
         ),
       ],
+    ),
     );
   }
 }
