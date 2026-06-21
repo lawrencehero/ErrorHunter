@@ -106,8 +106,8 @@ final GoRouter appRouter = GoRouter(
           ],
         ),
         GoRoute(
-          path: Routes.addQuestion,
-          builder: (context, state) => const AddQuestionPage(),
+          path: Routes.weeklyReports,
+          builder: (context, state) => const WeeklyReportListPage(),
         ),
         GoRoute(
           path: Routes.profile,
@@ -117,6 +117,10 @@ final GoRouter appRouter = GoRouter(
     ),
 
     // ─── Full-screen Pages ──────────────────────────────
+    GoRoute(
+      path: Routes.addQuestion,
+      builder: (context, state) => const AddQuestionPage(),
+    ),
     GoRoute(
       path: Routes.review,
       builder: (context, state) => const ReviewPage(),
@@ -139,11 +143,7 @@ final GoRouter appRouter = GoRouter(
       },
     ),
 
-    // ─── Reports ────────────────────────────────────────
-    GoRoute(
-      path: Routes.weeklyReports,
-      builder: (context, state) => const WeeklyReportListPage(),
-    ),
+    // ─── Reports Detail ─────────────────────────────────
     GoRoute(
       path: Routes.weeklyReportDetail,
       builder: (context, state) => WeeklyReportDetailPage(

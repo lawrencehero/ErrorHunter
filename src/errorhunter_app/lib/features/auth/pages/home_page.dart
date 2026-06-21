@@ -63,65 +63,71 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ─── 游戏化布局：固定蓝色背景+问候语，卡片从下方滚出 ────────
+  // ─── 游戏化布局：固定蓝色顶栏 + 下方滚动内容 ──────────────
 
   Widget _buildGamifiedLayout(AppThemeExtension ext) {
-    return Stack(
+    final topPadding = MediaQuery.of(context).padding.top;
+    return Column(
       children: [
-        // 层1: 蓝色渐变背景（固定，铺满上半部分）
-        Positioned(
-          left: 0, right: 0, top: 0,
-          child: Container(
-            height: 260,
-            decoration: BoxDecoration(
-              color: AppColors.brandPrimary,
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(28),
-                bottomRight: Radius.circular(28),
-              ),
+        // 固定蓝色顶栏（不随滚动移动）
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: AppColors.brandPrimary,
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(28),
+              bottomRight: Radius.circular(28),
             ),
-            child: CustomPaint(painter: _DotPatternPainter()),
           ),
-        ),
-        // 层2: 问候语（固定，不随滚动移动）
-        Positioned(
-          left: AppSpacing.base, right: AppSpacing.base, top: MediaQuery.of(context).padding.top + 16,
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: Text(
-                  'Hi，$_userName 👋',
-                  style: AppTypography.primary.h1.copyWith(
-                    color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-                ),
+              SizedBox(height: topPadding + 16),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: AppSpacing.base),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('🔥', style: TextStyle(fontSize: 16)),
-                    const SizedBox(width: 4),
-                    Text('$_streakDays天',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                    Expanded(
+                      child: Text(
+                        'Hi，$_userName 👋',
+                        style: AppTypography.primary.h1.copyWith(
+                          color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('🔥', style: TextStyle(fontSize: 16)),
+                          const SizedBox(width: 4),
+                          Text('$_streakDays天',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
-        // 层3: 可滚动内容（从蓝色区域下方开始滚动）
-        SingleChildScrollView(
-          padding: const EdgeInsets.only(top: 110, bottom: 100),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: AppSpacing.base),
+        // 可滚动内容区域
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(
+              top: AppSpacing.base,
+              bottom: 100,
+              left: AppSpacing.base,
+              right: AppSpacing.base,
+            ),
             child: Column(
               children: [
                 _buildStreakCard(ext, false),
@@ -699,6 +705,7 @@ class _HomePageState extends State<HomePage> {
                           ? [BoxShadow(color: AppColors.successDark, offset: const Offset(0, 3), blurRadius: 0)]
                           : null,
                     ),
+                    alignment: Alignment.center,
                     child: isDone
                         ? const Icon(Icons.check, size: 18, color: Colors.white)
                         : isToday

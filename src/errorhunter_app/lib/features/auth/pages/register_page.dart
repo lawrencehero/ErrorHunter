@@ -15,8 +15,8 @@ import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
 import '../../../widgets/common/buttons/primary_button.dart';
 import '../../../widgets/common/dialogs/snackbar.dart';
-import '../../../widgets/common/inputs/otp_input.dart';
 import '../../../widgets/common/inputs/phone_input.dart';
+import 'package:flutter/services.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
@@ -194,20 +194,53 @@ class _RegisterPageState extends State<RegisterPage> {
 
                   // ─── OTP Input + Send Button ───────────────
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
-                        child: EHOtpInput(
-                          onCompleted: (code) =>
-                              setState(() => _otpCode = code),
-                          autoFocus: false,
-                          firstFocusNode: _otpFirstFocusNode,
+                        child: TextField(
+                          focusNode: _otpFirstFocusNode,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          textAlign: TextAlign.center,
+                          style: AppTypography.primary.h2.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 8,
+                          ),
+                          decoration: InputDecoration(
+                            counterText: '',
+                            hintText: '请输入验证码',
+                            hintStyle: AppTypography.primary.body.copyWith(
+                              color: AppColors.textTertiary,
+                              letterSpacing: 0,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: AppRadius.radiusMd,
+                              borderSide: const BorderSide(color: AppColors.border),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: AppRadius.radiusMd,
+                              borderSide: const BorderSide(color: AppColors.border),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: AppRadius.radiusMd,
+                              borderSide: const BorderSide(color: AppColors.brandPrimary, width: 2),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(6),
+                          ],
+                          onChanged: (v) => setState(() => _otpCode = v),
                         ),
                       ),
                       SizedBox(width: AppSpacing.md),
                       // 获取验证码按钮
                       GestureDetector(
-                        onTap: _onSendOtp,
+                        onTap: _isPhoneValid && _countdownSeconds == 0 ? _onSendOtp : null,
                         child: Container(
                           height: 52,
                           padding: EdgeInsets.symmetric(
@@ -296,8 +329,8 @@ class _RegisterPageState extends State<RegisterPage> {
                         child: Container(
                           width: 48,
                           height: 48,
-                          alignment: Alignment.centerLeft,
-                          padding: EdgeInsets.only(left: 14, top: 14),
+                          alignment: Alignment.topLeft,
+                          padding: const EdgeInsets.only(left: 14, top: 2),
                           child: Container(
                             width: 20,
                             height: 20,

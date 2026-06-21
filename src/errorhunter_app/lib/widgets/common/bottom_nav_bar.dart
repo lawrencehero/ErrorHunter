@@ -63,6 +63,7 @@ class EHBottomNavBar extends StatelessWidget {
         child: SizedBox(
           height: 64,
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               // 5个位置：[0] [1] [FAB占位] [2] [3]
               Row(
@@ -75,13 +76,12 @@ class EHBottomNavBar extends StatelessWidget {
                 ],
               ),
               // 居中浮动按钮
-              Positioned(
-                left: 0, right: 0, top: -18,
+              Positioned.fill(
                 child: Center(
                   child: GestureDetector(
                     onTap: onFabPressed,
                     child: Container(
-                      width: 60, height: 60,
+                      width: 56, height: 56,
                       decoration: BoxDecoration(
                         gradient: AppGradients.primary,
                         shape: BoxShape.circle,
@@ -92,7 +92,7 @@ class EHBottomNavBar extends StatelessWidget {
                         ),
                       ),
                       alignment: Alignment.center,
-                      child: Icon(fabIcon, size: 30, color: Colors.white),
+                      child: Icon(fabIcon, size: 28, color: Colors.white),
                     ),
                   ),
                 ),
