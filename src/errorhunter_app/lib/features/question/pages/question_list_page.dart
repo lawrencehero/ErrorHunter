@@ -9,6 +9,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
 import '../../../theme/theme_manager.dart';
+import '../../../theme/app_theme_mode.dart';
 import '../../../widgets/common/cards/question_card.dart';
 import '../../../widgets/common/chips/filter_chip.dart';
 import '../../../widgets/common/empty_states/no_questions_empty.dart';
@@ -151,6 +152,8 @@ class _QuestionListPageState extends State<QuestionListPage>
 
   Widget _buildStatusTabs() {
     final tc = context.textColors;
+    final isGlass = context.themeExt.headerStyle == HeaderStyle.transparent;
+    final accentColor = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Container(
       color: Colors.transparent,
       padding: EdgeInsets.symmetric(horizontal: AppSpacing.base),
@@ -158,11 +161,11 @@ class _QuestionListPageState extends State<QuestionListPage>
         controller: _tabController,
         isScrollable: true,
         tabAlignment: TabAlignment.start,
-        labelColor: AppColors.brandPrimary,
+        labelColor: accentColor,
         unselectedLabelColor: tc.secondary,
         labelStyle: AppTypography.primary.button,
         unselectedLabelStyle: AppTypography.primary.body,
-        indicatorColor: AppColors.brandPrimary,
+        indicatorColor: accentColor,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: Colors.transparent,
         tabs: _tabLabels.map((label) => Tab(text: label)).toList(),
@@ -457,27 +460,37 @@ class _FilterDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.headerStyle == HeaderStyle.transparent;
+    final accentColor = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+
     return PopupMenuButton<Object?>(
       onSelected: onChanged,
       offset: const Offset(0, 36),
+      color: isGlass ? const Color(0xFF2D2D3A) : Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       itemBuilder: (_) => items
           .map((item) => PopupMenuItem<Object?>(
                 value: item.value,
-                child: item.child ?? const SizedBox.shrink(),
+                child: DefaultTextStyle(
+                  style: TextStyle(
+                    color: isGlass ? Colors.white : AppColors.textPrimary,
+                    fontSize: 14,
+                  ),
+                  child: item.child ?? const SizedBox.shrink(),
+                ),
               ))
           .toList(),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: selectedValue != null
-              ? AppColors.brandPrimary.withOpacity(0.1)
-              : Colors.white,
+              ? accentColor.withOpacity(isGlass ? 0.2 : 0.1)
+              : (isGlass ? Colors.white.withOpacity(0.12) : Colors.white),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selectedValue != null
-                ? AppColors.brandPrimary
-                : AppColors.border,
+                ? accentColor
+                : (isGlass ? Colors.white.withOpacity(0.2) : AppColors.border),
           ),
         ),
         child: Row(
@@ -485,14 +498,14 @@ class _FilterDropdown extends StatelessWidget {
           children: [
             Icon(icon, size: 14,
                 color: selectedValue != null
-                    ? AppColors.brandPrimary
+                    ? accentColor
                     : tc.secondary),
             SizedBox(width: 4),
             Text(
               label,
               style: AppTypography.primary.caption.copyWith(
                 color: selectedValue != null
-                    ? AppColors.brandPrimary
+                    ? accentColor
                     : tc.secondary,
                 fontWeight:
                     selectedValue != null ? FontWeight.w600 : FontWeight.w400,
@@ -501,7 +514,7 @@ class _FilterDropdown extends StatelessWidget {
             SizedBox(width: 2),
             Icon(Icons.arrow_drop_down, size: 16,
                 color: selectedValue != null
-                    ? AppColors.brandPrimary
+                    ? accentColor
                     : tc.tertiary),
           ],
         ),
