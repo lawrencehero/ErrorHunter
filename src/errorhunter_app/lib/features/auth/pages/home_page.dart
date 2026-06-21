@@ -452,9 +452,9 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildStatsRow(AppThemeExtension ext, bool isGlass) {
     final items = [
-      ('$_totalQuestions', '累计错题', AppColors.textPrimary),
-      ('$_eliminatedCount', '已消灭', AppColors.success),
-      ('${(_eliminationRate * 100).toStringAsFixed(0)}%', '消灭率', AppColors.brandSecondary),
+      ('$_totalQuestions', '累计错题', AppColors.textPrimary, const Color(0xFFFFB74D)),
+      ('$_eliminatedCount', '已消灭', AppColors.success, const Color(0xFF81C784)),
+      ('${(_eliminationRate * 100).toStringAsFixed(0)}%', '消灭率', AppColors.brandSecondary, const Color(0xFFCE93D8)),
     ];
 
     return Row(
@@ -484,7 +484,7 @@ class _HomePageState extends State<HomePage> {
                     fit: BoxFit.scaleDown,
                     child: Text(item.$1,
                       style: TextStyle(
-                        color: isGlass ? Colors.white : item.$3,
+                        color: isGlass ? item.$4 : item.$3,
                         fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -1, height: 1.0,
                       ),
                     ),
