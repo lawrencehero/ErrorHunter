@@ -230,7 +230,13 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
         }
       },
       builder: (context, state) {
-        return Scaffold(
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) return;
+            context.go(Routes.home);
+          },
+          child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
             backgroundColor: Colors.transparent,
@@ -290,6 +296,7 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
               ),
             ],
           ),
+        ),
         );
       },
     );

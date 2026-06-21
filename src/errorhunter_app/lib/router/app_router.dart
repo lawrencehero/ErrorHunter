@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/pages/home_page.dart';
@@ -191,9 +192,22 @@ class _MainShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: child,
-      extendBody: false,
+    final currentIndex = _calculateSelectedIndex(context);
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // 已在首页 → 允许退出 App
+        if (currentIndex == 0) {
+          SystemNavigator.pop();
+          return;
+        }
+        // 非首页 → 返回到首页 tab
+        context.go(Routes.home);
+      },
+      child: Scaffold(
+        body: child,
+        extendBody: false,
       bottomNavigationBar: EHBottomNavBar(
         currentIndex: _calculateSelectedIndex(context),
         onTap: (index) => _onItemTapped(index, context),
@@ -220,6 +234,7 @@ class _MainShell extends StatelessWidget {
             label: '我的',
           ),
         ],
+      ),
       ),
     );
   }
