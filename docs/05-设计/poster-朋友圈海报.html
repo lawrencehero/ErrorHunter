@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>错题猎手 - 朋友圈海报</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; background: #0e0e1a;
+    font-family: 'Noto Sans SC', -apple-system, sans-serif;
+  }
+  .poster {
+    width: 1080px; height: 1920px;
+    position: relative; overflow: hidden;
+    background: linear-gradient(165deg, #0f0c29 0%, #1a1a3e 35%, #24243e 65%, #1a1a2e 100%);
+  }
+
+  /* ── 背景光球 ── */
+  .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.35; }
+  .orb-1 { width: 480px; height: 480px; background: #667EEA; top: -120px; right: -80px; }
+  .orb-2 { width: 380px; height: 380px; background: #F093FB; bottom: 300px; left: -120px; }
+  .orb-3 { width: 300px; height: 300px; background: #FF8C42; top: 500px; right: -60px; opacity: 0.2; }
+
+  /* ── 品牌区 ── */
+  .brand { position: relative; z-index: 2; text-align: center; padding-top: 64px; }
+  .brand-icon {
+    width: 100px; height: 100px;
+    background: linear-gradient(135deg, #4F6EF7, #667EEA);
+    border-radius: 26px; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 18px; box-shadow: 0 8px 40px rgba(79,110,247,0.45);
+    font-size: 48px;
+  }
+  .brand-name {
+    font-size: 58px; font-weight: 900; color: #fff;
+    letter-spacing: 6px; text-shadow: 0 4px 24px rgba(79,110,247,0.25);
+  }
+  .brand-slogan {
+    font-size: 24px; color: rgba(255,255,255,0.6); margin-top: 8px;
+    font-weight: 300; letter-spacing: 3px;
+  }
+
+  /* ── 双主题区 ── */
+  .themes { position: relative; z-index: 2; padding: 40px 40px 0; }
+  .themes-label {
+    text-align: center; font-size: 18px; color: rgba(255,255,255,0.4);
+    letter-spacing: 8px; margin-bottom: 28px; font-weight: 400;
+  }
+  .phones { display: flex; gap: 24px; justify-content: center; }
+
+  /* 手机 */
+  .phone-wrap { text-align: center; }
+  .phone {
+    width: 440px; height: 880px; border-radius: 44px; overflow: hidden;
+    position: relative;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(255,255,255,0.08);
+  }
+  .phone-title { margin-top: 16px; font-size: 20px; font-weight: 700; color: rgba(255,255,255,0.85); letter-spacing: 2px; }
+  .phone-sub { margin-top: 4px; font-size: 14px; color: rgba(255,255,255,0.35); letter-spacing: 1px; }
+
+  /* ── 通用卡片样式 ── */
+  .scr { width: 100%; height: 100%; position: relative; }
+
+  /* 顶部安全区 */
+  .safe-top { height: 44px; }
+
+  /* 问候栏 */
+  .greet { padding: 0 20px; display: flex; align-items: center; justify-content: space-between; }
+  .greet-text { font-size: 22px; font-weight: 800; }
+  .streak-pill {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 3px 12px; border-radius: 16px; font-size: 13px; font-weight: 800;
+  }
+
+  /* 内容区 */
+  .content { padding: 14px 18px 80px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── 游戏化 ── */
+  .scr-g { background: #F8F9FC; }
+  .scr-g .safe-top { background: #4F6EF7; }
+  .scr-g .greet { background: #4F6EF7; padding-bottom: 20px; border-radius: 0 0 24px 24px; }
+  .scr-g .greet-text { color: #fff; }
+  .scr-g .streak-pill { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: #fff; }
+
+  .g-card { background: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.04), 0 3px 0 #e8e8e8; }
+
+  /* 打卡条 */
+  .g-streak {
+    background: linear-gradient(135deg, #FF8C42, #FF6B6B);
+    border-radius: 16px; padding: 12px 14px; box-shadow: 0 3px 0 #d4654a;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .g-streak .num { font-size: 30px; font-weight: 800; color: #fff; }
+  .g-streak .lbl { font-size: 11px; color: rgba(255,255,255,0.85); font-weight: 600; }
+  .g-streak .trophy { margin-left: auto; font-size: 22px; }
+
+  /* 任务卡 */
+  .g-task-badge {
+    display: inline-block; background: #E8EDFF; color: #4F6EF7;
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 12px;
+  }
+  .g-task-num { font-size: 42px; font-weight: 800; color: #4F6EF7; letter-spacing: -2px; line-height: 1; }
+  .g-task-lbl { font-size: 14px; font-weight: 600; color: #1a1a2e; }
+  .g-task-btn {
+    background: linear-gradient(135deg, #4F6EF7, #667EEA); border-radius: 12px;
+    padding: 10px; text-align: center; color: #fff; font-weight: 800; font-size: 13px;
+    box-shadow: 0 3px 0 #3a54c4; margin-top: 6px;
+  }
+
+  /* 统计行 */
+  .stats-row { display: flex; gap: 6px; }
+  .g-stat {
+    flex: 1; background: #fff; border-radius: 12px; padding: 10px 6px; text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.03), 0 2px 0 #e8e8e8;
+  }
+  .g-stat .n { font-size: 20px; font-weight: 800; }
+  .g-stat .l { font-size: 9px; color: #6B7280; margin-top: 1px; }
+  .n-o { color: #FF8C42; } .n-g { color: #34C759; } .n-p { color: #9B59B6; }
+
+  /* 薄弱知识点 */
+  .section-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .section-hdr .icon-circle {
+    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px;
+  }
+  .section-hdr .title { font-size: 14px; font-weight: 700; }
+  .kp-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .kp-rank {
+    width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; color: #fff; flex-shrink: 0;
+  }
+  .kp-name { font-size: 12px; font-weight: 600; flex: 1; }
+  .kp-bar-wrap { width: 80px; height: 6px; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+  .kp-bar { height: 100%; border-radius: 3px; }
+  .kp-count { font-size: 11px; font-weight: 700; flex-shrink: 0; width: 32px; text-align: right; }
+
+  /* 周打卡 */
+  .week-row { display: flex; justify-content: space-between; }
+  .week-day { text-align: center; }
+  .week-day .d-label { font-size: 10px; font-weight: 600; margin-bottom: 4px; }
+  .week-day .d-circle {
+    width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800; margin: 0 auto;
+  }
+
+  /* 底部导航 */
+  .bnav {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 68px;
+    display: flex; align-items: center; justify-content: space-around; padding: 0 8px;
+  }
+  .bnav-g { background: #fff; box-shadow: 0 -3px 12px rgba(0,0,0,0.05); }
+  .bnav-item { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 9px; color: #9CA3AF; }
+  .bnav-item.active { color: #4F6EF7; }
+  .bnav-icon { font-size: 18px; }
+  .bnav-fab {
+    width: 48px; height: 48px; background: linear-gradient(135deg, #4F6EF7, #667EEA);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; color: #fff; margin-top: -16px;
+    box-shadow: 0 4px 14px rgba(79,110,247,0.4), 0 0 0 3px #fff;
+  }
+
+  /* ── 玻璃拟态 ── */
+  .scr-gl { background: linear-gradient(160deg, #667EEA 0%, #764BA2 50%, #F093FB 100%); }
+  .scr-gl .greet-text { color: #fff; }
+  .scr-gl .streak-pill { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); color: #fff; }
+  .gl-orb { position: absolute; border-radius: 50%; filter: blur(40px); }
+  .gl-orb-1 { width: 180px; height: 180px; background: rgba(79,110,247,0.45); top: -30px; right: -20px; }
+  .gl-orb-2 { width: 140px; height: 140px; background: rgba(255,140,66,0.35); bottom: 120px; left: -30px; }
+
+  .gl-card {
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 16px; padding: 14px; backdrop-filter: blur(16px);
+  }
+  .gl-streak { display: flex; align-items: center; gap: 10px; }
+  .gl-streak .num { font-size: 28px; font-weight: 800; color: #FFB07A; }
+  .gl-streak .lbl { font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 600; }
+
+  .gl-task-badge {
+    display: inline-block; background: rgba(255,255,255,0.1);
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 12px;
+    color: rgba(255,255,255,0.7);
+  }
+  .gl-task-num { font-size: 42px; font-weight: 800; color: #fff; letter-spacing: -2px; line-height: 1; }
+  .gl-task-lbl { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.8); }
+  .gl-task-btn {
+    background: linear-gradient(135deg, #4F6EF7, #667EEA); border-radius: 12px;
+    padding: 10px; text-align: center; color: #fff; font-weight: 800; font-size: 13px;
+    margin-top: 6px;
+  }
+
+  .gl-stat {
+    flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px; padding: 10px 6px; text-align: center;
+  }
+  .gl-stat .n { font-size: 20px; font-weight: 800; }
+  .gl-stat .l { font-size: 9px; color: rgba(255,255,255,0.6); margin-top: 1px; }
+  .n-amber { color: #FFB74D; } .n-mint { color: #81C784; } .n-lilac { color: #CE93D8; }
+
+  .gl-section-hdr .icon-circle { background: rgba(255,255,255,0.1); }
+  .gl-section-hdr .title { color: #fff; }
+  .gl-kp-name { color: rgba(255,255,255,0.9); }
+  .gl-kp-bar-wrap { background: rgba(255,255,255,0.1); }
+  .gl-kp-count { color: rgba(255,255,255,0.7); }
+
+  .gl-week .d-label { color: rgba(255,255,255,0.5); }
+  .gl-week .d-circle-done { background: linear-gradient(135deg, #34C759, #30D158); color: #fff; box-shadow: 0 2px 0 #28a745; }
+  .gl-week .d-circle-today {
+    background: transparent; border: 2px solid #fff; color: #fff;
+  }
+  .gl-week .d-circle-empty { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.2); }
+
+  .bnav-gl { background: rgba(255,255,255,0.08); border-top: 1px solid rgba(255,255,255,0.1); }
+  .bnav-gl .bnav-item { color: rgba(255,255,255,0.5); }
+  .bnav-gl .bnav-item.active { color: #fff; }
+  .bnav-gl .bnav-fab { box-shadow: 0 4px 14px rgba(79,110,247,0.4), 0 0 0 3px rgba(255,255,255,0.12); }
+
+  /* ── 特点优势区 ── */
+  .advantages {
+    position: relative; z-index: 2;
+    padding: 44px 56px 0;
+  }
+  .adv-title {
+    text-align: center; font-size: 18px; color: rgba(255,255,255,0.4);
+    letter-spacing: 8px; margin-bottom: 28px; font-weight: 400;
+  }
+  .adv-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .adv-item {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px; padding: 18px 20px;
+    display: flex; align-items: flex-start; gap: 14px;
+  }
+  .adv-emoji {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .adv-emoji.e1 { background: rgba(255,140,66,0.15); }
+  .adv-emoji.e2 { background: rgba(79,110,247,0.15); }
+  .adv-emoji.e3 { background: rgba(52,199,89,0.15); }
+  .adv-emoji.e4 { background: rgba(155,89,182,0.15); }
+  .adv-emoji.e5 { background: rgba(240,147,251,0.15); }
+  .adv-emoji.e6 { background: rgba(255,107,107,0.15); }
+  .adv-text .adv-h { font-size: 17px; font-weight: 700; color: rgba(255,255,255,0.9); margin-bottom: 3px; }
+  .adv-text .adv-d { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.4; }
+
+  /* ── 底部 ── */
+  .footer {
+    position: relative; z-index: 2;
+    text-align: center; padding: 36px 0 48px;
+  }
+  .footer-audience {
+    font-size: 20px; color: rgba(255,255,255,0.45); letter-spacing: 2px;
+  }
+  .footer-copy {
+    margin-top: 12px; font-size: 14px; color: rgba(255,255,255,0.2); letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<div class="poster">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <!-- ── 品牌 ── -->
+  <div class="brand">
+    <div class="brand-icon">📖</div>
+    <div class="brand-name">错题猎手</div>
+    <div class="brand-slogan">消灭错题，每天进步一点点</div>
+  </div>
+
+  <!-- ── 双主题展示 ── -->
+  <div class="themes">
+    <div class="themes-label">· 两套主题 · 随心切换 ·</div>
+    <div class="phones">
+
+      <!-- ═══ 游戏化 ═══ -->
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="scr scr-g">
+            <div class="safe-top"></div>
+            <div class="greet">
+              <span class="greet-text">Hi，小明 👋</span>
+              <span class="streak-pill">🔥 12天</span>
+            </div>
+            <div class="content">
+              <!-- 打卡条 -->
+              <div class="g-streak">
+                <span style="font-size:22px">🔥</span>
+                <div><div class="lbl">连续打卡</div><div class="num">12<span style="font-size:14px;font-weight:700"> 天</span></div></div>
+                <span class="trophy">🏆</span>
+              </div>
+              <!-- 任务 -->
+              <div class="g-card">
+                <div class="g-task-badge">📝 今日任务</div>
+                <div style="display:flex;align-items:baseline;gap:4px;margin:4px 0">
+                  <span class="g-task-num">8</span>
+                  <span class="g-task-lbl">道错题等你复习</span>
+                </div>
+                <div class="g-task-btn">▶ 开始复习</div>
+              </div>
+              <!-- 统计 -->
+              <div class="stats-row">
+                <div class="g-stat"><div class="n n-o">156</div><div class="l">累计错题</div></div>
+                <div class="g-stat"><div class="n n-g">98</div><div class="l">已消灭</div></div>
+                <div class="g-stat"><div class="n n-p">63%</div><div class="l">消灭率</div></div>
+              </div>
+              <!-- 薄弱知识点 -->
+              <div class="g-card">
+                <div class="section-hdr">
+                  <div class="icon-circle" style="background:#FFF3E0"><span style="color:#FF9800">⚠</span></div>
+                  <span class="title" style="color:#1a1a2e">薄弱知识点</span>
+                </div>
+                <div class="kp-item">
+                  <div class="kp-rank" style="background:#FF6B6B">1</div>
+                  <span class="kp-name" style="color:#1a1a2e">分数加减法</span>
+                  <div class="kp-bar-wrap" style="background:#FF6B6B15"><div class="kp-bar" style="width:100%;background:#FF6B6B"></div></div>
+                  <span class="kp-count" style="color:#FF6B6B">12题</span>
+                </div>
+                <div class="kp-item">
+                  <div class="kp-rank" style="background:#4F6EF7">2</div>
+                  <span class="kp-name" style="color:#1a1a2e">几何面积</span>
+                  <div class="kp-bar-wrap" style="background:#4F6EF715"><div class="kp-bar" style="width:67%;background:#4F6EF7"></div></div>
+                  <span class="kp-count" style="color:#4F6EF7">8题</span>
+                </div>
+                <div class="kp-item">
+                  <div class="kp-rank" style="background:#9B59B6">3</div>
+                  <span class="kp-name" style="color:#1a1a2e">审题不清</span>
+                  <div class="kp-bar-wrap" style="background:#9B59B615"><div class="kp-bar" style="width:50%;background:#9B59B6"></div></div>
+                  <span class="kp-count" style="color:#9B59B6">6题</span>
+                </div>
+              </div>
+              <!-- 本周打卡 -->
+              <div class="g-card">
+                <div class="section-hdr" style="margin-bottom:10px">
+                  <div class="icon-circle" style="background:#E8EDFF"><span style="color:#4F6EF7;font-size:11px">📅</span></div>
+                  <span class="title" style="color:#1a1a2e">本周打卡</span>
+                  <span style="margin-left:auto;font-size:12px;font-weight:700;color:#6B7280">5/7</span>
+                </div>
+                <div class="week-row">
+                  <div class="week-day"><div class="d-label" style="color:#6B7280">一</div><div class="d-circle" style="background:linear-gradient(135deg,#34C759,#30D158);color:#fff;box-shadow:0 2px 0 #28a745">✓</div></div>
+                  <div class="week-day"><div class="d-label" style="color:#6B7280">二</div><div class="d-circle" style="background:linear-gradient(135deg,#34C759,#30D158);color:#fff;box-shadow:0 2px 0 #28a745">✓</div></div>
+                  <div class="week-day"><div class="d-label" style="color:#6B7280">三</div><div class="d-circle" style="background:linear-gradient(135deg,#34C759,#30D158);color:#fff;box-shadow:0 2px 0 #28a745">✓</div></div>
+                  <div class="week-day"><div class="d-label" style="color:#6B7280">四</div><div class="d-circle" style="background:linear-gradient(135deg,#34C759,#30D158);color:#fff;box-shadow:0 2px 0 #28a745">✓</div></div>
+                  <div class="week-day"><div class="d-label" style="color:#6B7280">五</div><div class="d-circle" style="background:linear-gradient(135deg,#34C759,#30D158);color:#fff;box-shadow:0 2px 0 #28a745">✓</div></div>
+                  <div class="week-day"><div class="d-label" style="color:#4F6EF7;font-weight:700">六</div><div class="d-circle" style="background:#E8EDFF;border:2px solid #4F6EF7;color:#4F6EF7;font-weight:800">6</div></div>
+                  <div class="week-day"><div class="d-label" style="color:#9CA3AF">日</div><div class="d-circle" style="background:#F2F2F7;border:1px solid #e0e0e0;color:#ccc">7</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="bnav bnav-g">
+              <div class="bnav-item active"><span class="bnav-icon">🏠</span>首页</div>
+              <div class="bnav-item"><span class="bnav-icon">📚</span>错题本</div>
+              <div class="bnav-fab">＋</div>
+              <div class="bnav-item"><span class="bnav-icon">📊</span>周报</div>
+              <div class="bnav-item"><span class="bnav-icon">👤</span>我的</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-title">🎮 游戏化</div>
+        <div class="phone-sub">Duolingo 风格 · 活力满满</div>
+      </div>
+
+      <!-- ═══ 玻璃拟态 ═══ -->
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="scr scr-gl">
+            <div class="gl-orb gl-orb-1"></div>
+            <div class="gl-orb gl-orb-2"></div>
+            <div class="safe-top"></div>
+            <div class="greet">
+              <span class="greet-text">Hi，小明 👋</span>
+              <span class="streak-pill">🔥 12天</span>
+            </div>
+            <div class="content" style="position:relative;z-index:1">
+              <!-- 打卡条 -->
+              <div class="gl-card gl-streak">
+                <span style="font-size:20px">🔥</span>
+                <div><div class="lbl">连续打卡</div><div class="num">12<span style="font-size:12px;font-weight:700"> 天</span></div></div>
+              </div>
+              <!-- 任务 -->
+              <div class="gl-card">
+                <div class="gl-task-badge">📝 今日任务</div>
+                <div style="display:flex;align-items:baseline;gap:4px;margin:4px 0">
+                  <span class="gl-task-num">8</span>
+                  <span class="gl-task-lbl">道错题等你复习</span>
+                </div>
+                <div class="gl-task-btn">▶ 开始复习</div>
+              </div>
+              <!-- 统计 -->
+              <div class="stats-row">
+                <div class="gl-stat"><div class="n n-amber">156</div><div class="l">累计错题</div></div>
+                <div class="gl-stat"><div class="n n-mint">98</div><div class="l">已消灭</div></div>
+                <div class="gl-stat"><div class="n n-lilac">63%</div><div class="l">消灭率</div></div>
+              </div>
+              <!-- 薄弱知识点 -->
+              <div class="gl-card">
+                <div class="section-hdr gl-section-hdr">
+                  <div class="icon-circle"><span style="color:rgba(255,255,255,0.7)">⚠</span></div>
+                  <span class="title">薄弱知识点</span>
+                </div>
+                <div class="kp-item">
+                  <div class="kp-rank" style="background:#FF6B6B">1</div>
+                  <span class="kp-name gl-kp-name">分数加减法</span>
+                  <div class="kp-bar-wrap gl-kp-bar-wrap"><div class="kp-bar" style="width:100%;background:#FF6B6B"></div></div>
+                  <span class="kp-count gl-kp-count">12题</span>
+                </div>
+                <div class="kp-item">
+                  <div class="kp-rank" style="background:#667EEA">2</div>
+                  <span class="kp-name gl-kp-name">几何面积</span>
+                  <div class="kp-bar-wrap gl-kp-bar-wrap"><div class="kp-bar" style="width:67%;background:#667EEA"></div></div>
+                  <span class="kp-count gl-kp-count">8题</span>
+                </div>
+                <div class="kp-item">
+                  <div class="kp-rank" style="background:#CE93D8">3</div>
+                  <span class="kp-name gl-kp-name">审题不清</span>
+                  <div class="kp-bar-wrap gl-kp-bar-wrap"><div class="kp-bar" style="width:50%;background:#CE93D8"></div></div>
+                  <span class="kp-count gl-kp-count">6题</span>
+                </div>
+              </div>
+              <!-- 本周打卡 -->
+              <div class="gl-card">
+                <div class="section-hdr gl-section-hdr" style="margin-bottom:10px">
+                  <div class="icon-circle"><span style="color:rgba(255,255,255,0.7);font-size:11px">📅</span></div>
+                  <span class="title">本周打卡</span>
+                  <span style="margin-left:auto;font-size:12px;font-weight:700;color:rgba(255,255,255,0.6)">5/7</span>
+                </div>
+                <div class="week-row gl-week">
+                  <div class="week-day"><div class="d-label">一</div><div class="d-circle d-circle-done">✓</div></div>
+                  <div class="week-day"><div class="d-label">二</div><div class="d-circle d-circle-done">✓</div></div>
+                  <div class="week-day"><div class="d-label">三</div><div class="d-circle d-circle-done">✓</div></div>
+                  <div class="week-day"><div class="d-label">四</div><div class="d-circle d-circle-done">✓</div></div>
+                  <div class="week-day"><div class="d-label">五</div><div class="d-circle d-circle-done">✓</div></div>
+                  <div class="week-day"><div class="d-label" style="color:#fff!important">六</div><div class="d-circle d-circle-today">6</div></div>
+                  <div class="week-day"><div class="d-label">日</div><div class="d-circle d-circle-empty">7</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="bnav bnav-gl">
+              <div class="bnav-item active"><span class="bnav-icon">🏠</span>首页</div>
+              <div class="bnav-item"><span class="bnav-icon">📚</span>错题本</div>
+              <div class="bnav-fab">＋</div>
+              <div class="bnav-item"><span class="bnav-icon">📊</span>周报</div>
+              <div class="bnav-item"><span class="bnav-icon">👤</span>我的</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-title">✨ 玻璃拟态</div>
+        <div class="phone-sub">毛玻璃卡片 · 通透轻盈</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 产品特点 ── -->
+  <div class="advantages">
+    <div class="adv-title">· 产品特点 ·</div>
+    <div class="adv-grid">
+      <div class="adv-item">
+        <div class="adv-emoji e1">📷</div>
+        <div class="adv-text">
+          <div class="adv-h">拍照智能录入</div>
+          <div class="adv-d">拍一张照片，AI 自动识别题目文字，告别手抄</div>
+        </div>
+      </div>
+      <div class="adv-item">
+        <div class="adv-emoji e2">🧠</div>
+        <div class="adv-text">
+          <div class="adv-h">错因深度归因</div>
+          <div class="adv-d">不只记录对错，更分析"为什么错"，精准定位薄弱点</div>
+        </div>
+      </div>
+      <div class="adv-item">
+        <div class="adv-emoji e3">🃏</div>
+        <div class="adv-text">
+          <div class="adv-h">翻卡趣味复习</div>
+          <div class="adv-d">游戏化翻卡复习，自评+消灭机制，让复习不再枯燥</div>
+        </div>
+      </div>
+      <div class="adv-item">
+        <div class="adv-emoji e4">📊</div>
+        <div class="adv-text">
+          <div class="adv-h">学情周报追踪</div>
+          <div class="adv-d">每周自动生成学习报告，进步看得见，家长更放心</div>
+        </div>
+      </div>
+      <div class="adv-item">
+        <div class="adv-emoji e5">🎨</div>
+        <div class="adv-text">
+          <div class="adv-h">双主题随心换</div>
+          <div class="adv-d">游戏化 / 玻璃拟态两套 UI，小学生初中生都爱用</div>
+        </div>
+      </div>
+      <div class="adv-item">
+        <div class="adv-emoji e6">🎯</div>
+        <div class="adv-text">
+          <div class="adv-h">错题全生命周期</div>
+          <div class="adv-d">采集→归因→复习→消灭，形成完整学习闭环</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 底部 ── -->
+  <div class="footer">
+    <div class="footer-audience">适合小学 3~6 年级 · 初中学生</div>
+    <div class="footer-copy">错题猎手 ErrorHunter © 2026</div>
+  </div>
+</div>
+</body>
+</html>
