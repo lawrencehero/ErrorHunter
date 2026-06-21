@@ -193,7 +193,7 @@ class _MainShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: child,
-      extendBody: true,
+      extendBody: false,
       bottomNavigationBar: EHBottomNavBar(
         currentIndex: _calculateSelectedIndex(context),
         onTap: (index) => _onItemTapped(index, context),

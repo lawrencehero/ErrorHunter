@@ -209,36 +209,33 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildScrollableContent(AppThemeExtension ext, bool isGlass) {
     return SingleChildScrollView(
-      padding: EdgeInsets.only(bottom: 100),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + AppSpacing.base,
+        bottom: AppSpacing.xxl,
+        left: AppSpacing.base,
+        right: AppSpacing.base,
+      ),
       child: Column(
         children: [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: AppSpacing.base),
-            child: Column(
-              children: [
-                // 玻璃拟态顶栏问候
-                if (isGlass) ...[
-                  SizedBox(height: MediaQuery.of(context).padding.top + 16),
-                  _buildGlassTopBar(),
-                  SizedBox(height: AppSpacing.base),
-                ],
-                // 打卡条
-                _buildStreakCard(ext, isGlass),
-                SizedBox(height: AppSpacing.base),
-                // 今日任务
-                _buildTaskCard(ext, isGlass),
-                SizedBox(height: AppSpacing.base),
-                // 统计
-                _buildStatsRow(ext, isGlass),
-                SizedBox(height: AppSpacing.base),
-                // 薄弱知识点
-                _buildKnowledgeSection(ext, isGlass),
-                SizedBox(height: AppSpacing.base),
-                // 周打卡
-                _buildWeekCard(ext, isGlass),
-              ],
-            ),
-          ),
+          // 玻璃拟态顶栏问候
+          if (isGlass) ...[
+            _buildGlassTopBar(),
+            SizedBox(height: AppSpacing.base),
+          ],
+          // 打卡条
+          _buildStreakCard(ext, isGlass),
+          SizedBox(height: AppSpacing.base),
+          // 今日任务
+          _buildTaskCard(ext, isGlass),
+          SizedBox(height: AppSpacing.base),
+          // 统计
+          _buildStatsRow(ext, isGlass),
+          SizedBox(height: AppSpacing.base),
+          // 薄弱知识点
+          _buildKnowledgeSection(ext, isGlass),
+          SizedBox(height: AppSpacing.base),
+          // 周打卡
+          _buildWeekCard(ext, isGlass),
         ],
       ),
     );

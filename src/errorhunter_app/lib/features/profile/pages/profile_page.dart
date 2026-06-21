@@ -33,7 +33,10 @@ class ProfilePage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SingleChildScrollView(
-        padding: EdgeInsets.only(bottom: AppSpacing.xxxl),
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top,
+          bottom: AppSpacing.xxl,
+        ),
         child: Column(
           children: [
             // ─── 渐变顶栏 + 头像区 ────────────────────────
