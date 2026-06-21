@@ -264,7 +264,7 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
             backgroundColor: Colors.transparent,
             elevation: 0,
             leading: GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
+              onTap: () => context.go(Routes.home),
               child: Icon(Icons.close_rounded, color: tc.secondary),
             ),
             title: Text(

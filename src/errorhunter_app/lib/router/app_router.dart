@@ -116,11 +116,13 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
 
-    // ─── Full-screen Pages ──────────────────────────────
+    // ─── Full-screen Pages (outside ShellRoute, no bottom nav) ──
     GoRoute(
       path: Routes.addQuestion,
       builder: (context, state) => const AddQuestionPage(),
     ),
+
+    // ─── Full-screen Pages ──────────────────────────────
     GoRoute(
       path: Routes.review,
       builder: (context, state) => const ReviewPage(),
