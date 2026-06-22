@@ -26,6 +26,96 @@ $ARGUMENTS
 
 ### 第二步：逐页面走查（对每个页面执行以下检查）
 
+**📏 布局预算检查（像素级计算，必做）**
+
+对每个页面的代码进行静态布局计算，标准屏幕宽度按 360dp 计算：
+
+- [ ] **Row 宽度预算**：
+  遍历每个 `Row` 组件，计算所有子组件的宽度总和：
+  `总宽度 = Σ(子组件 width + margin + padding + SizedBox间距)`
+  如果 总宽度 > 可用宽度（360 - 页面水平padding×2），标记为 ⚠️ 溢出风险
+  特别注意：`Expanded` 包裹的组件虽然弹性适配，但如果 Row 中有多个固定宽度子组件 + Expanded，固定宽度之和已经超出屏幕时 Expanded 会被压缩为 0
+
+- [ ] **Stack 覆盖检查**：
+  当 `Stack` 中同时有 `Positioned`（固定元素）和 `SingleChildScrollView`（滚动内容）时：
+  检查 ScrollView 的 `padding.top` 是否 ≥ Positioned 元素的高度
+  如果不是 → 滚动时内容会覆盖固定元素
+  检查 ScrollView 的 `padding.bottom` 是否 ≥ 底部固定元素（如底边栏）的高度
+  如果不是 → 底部内容会被遮挡
+
+- [ ] **Scaffold + extendBody 检查**：
+  如果 Scaffold 设置了 `extendBody: true`，检查 body 的 scrollable 内容是否有足够的 bottom padding
+  底部边栏高度（通常 64-80dp）+ 系统导航栏高度（通常 0-24dp）
+  如果 bottom padding 不足 → 内容会滚到底边栏后面
+
+- [ ] **Container 对齐检查**：
+  有固定 width/height 的 Container 内如果有 Text/Icon 子组件：
+  检查是否设置了 `alignment: Alignment.center`
+  如果没有 → 内容可能不居中（默认左上角对齐）
+
+- [ ] **FittedBox 保护检查**：
+  大字号文字（fontSize > 24）是否被 FittedBox、AutoSizeText 或 Flexible 包裹？
+  如果没有 → 系统字体放大时可能溢出容器
+
+**🗺️ 导航链路模拟（路由图遍历，必做）**
+
+首先阅读路由配置文件（通常在 `router/` 或 `app_router.dart`），构建完整路由图：
+
+- [ ] **ShellRoute 完整性检查**：
+  找出所有 `ShellRoute` 定义
+  列出 ShellRoute 包含的子路由（有底边栏的页面）
+  列出 ShellRoute 之外的路由（无底边栏的全屏页面）
+  检查底边栏的每个 tab 对应的路由是否在 ShellRoute 内部
+  如果 tab 指向 ShellRoute 之外的路由 → 点击后底边栏会消失（断头路风险）
+
+- [ ] **页面出口检查**：
+  对每个全屏页面（ShellRoute 之外），检查是否有 AppBar 且 AppBar 有 leading（返回按钮）
+  如果没有返回按钮也没有其他导航出口 → 用户进入后无法返回（死胡同）
+
+- [ ] **Navigator.pop() 安全性检查**：
+  搜索所有 `Navigator.of(context).pop()` 调用
+  检查调用所在页面是否在 Navigator 栈中有上一级页面
+  如果页面是通过 GoRouter 的 `go()` 进入的（替换而非推入），pop() 可能导致栈为空 → 白屏或退出 App
+  建议：GoRouter 管理的页面应使用 `context.go()` / `context.push()` 而非 `Navigator.pop()`
+
+- [ ] **系统返回手势检查**：
+  检查 ShellRoute 的 Scaffold 是否有 `PopScope` 或 `WillPopScope` 拦截系统返回
+  如果没有 → 在非首页 tab 上按返回手势会退出 App 而非切换回首页
+  检查全屏页面的 PopScope 行为 → 应该返回到上一个页面而非退出 App
+
+**📋 竞品基线对照（行业惯例检查，必做）**
+
+对照以下移动端 UX 行业惯例，检查 App 是否符合主流设计：
+
+- [ ] **OTP 验证码输入**：
+  主流方案（微信/支付宝/抖音/美团）：单个 TextField + maxLength 限制 + 数字键盘
+  非主流方案：多个独立小格子（N 个 TextField 各限 1 位）
+  如果使用了多格子方案 → 标记为不符合行业惯例
+
+- [ ] **底部导航栏返回行为**：
+  主流方案（微信/支付宝/抖音）：在非首页 tab 按返回 → 切换到首页 tab（不退出 App）
+  在首页 tab 按返回 → 弹出"再按一次退出"提示或直接退出
+  如果按返回直接退出 App → 不符合主流行为
+
+- [ ] **首页滚动区域**：
+  主流方案（支付宝/微信/淘宝首页）：顶部搜索栏/问候语固定，内容在下方独立滚动区域
+  内容不应覆盖/穿透顶部固定元素
+  如果滚动内容覆盖了顶栏 → 不符合主流设计
+
+- [ ] **关闭按钮行为**：
+  主流方案：编辑页面点击 X 关闭时，如果有未保存内容 → 弹出确认弹窗
+  点击 X 不应导致白屏、崩溃或数据丢失
+  如果 X 按钮调用 pop() 且当前页面是通过 go() 进入的 → 可能白屏
+
+- [ ] **FAB 浮动按钮位置**：
+  主流方案：FAB 在底边栏上垂直居中，或略微上浮（不超过按钮半径的 1/3）
+  FAB 不应被裁剪（任何部分不应超出可见区域）
+  如果 Positioned 的 top 值为负数 → 检查是否有 ClipRect 导致裁剪
+
+- [ ] **Tab 指示器与下方控件间距**：
+  TabBar 选中态指示器（indicator）与下方筛选栏之间应有至少 8dp 间距
+  如果紧贴 → 视觉上难以区分两层 UI
+
 **🖼️ 视觉检查（用户看到什么）**
 - [ ] 页面标题/导航栏是否正确显示？
 - [ ] 空状态（无数据时）是否有友好提示？还是空白一片？
