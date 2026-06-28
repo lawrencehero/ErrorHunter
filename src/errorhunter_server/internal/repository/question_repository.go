@@ -147,7 +147,23 @@ func (r *QuestionRepository) Restore(ctx context.Context, id int64) error {
 
 // PermanentDelete 永久删除
 func (r *QuestionRepository) PermanentDelete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&model.Question{}, id).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先清理知识点关联，否则 fk_qk_question (ON DELETE NO ACTION) 会阻止删除
+		if err := tx.Exec("DELETE FROM question_knowledge WHERE question_id = ?", id).Error; err != nil {
+			return err
+		}
+		return tx.Unscoped().Delete(&model.Question{}, id).Error
+	})
+}
+
+// ListDeletedImageURLs 获取用户回收站中所有错题的图片 URL（用于清理对象存储）
+func (r *QuestionRepository) ListDeletedImageURLs(ctx context.Context, userID int64) ([]string, error) {
+	var urls []string
+	err := r.db.WithContext(ctx).Unscoped().
+		Model(&model.Question{}).
+		Where("user_id = ? AND deleted_at IS NOT NULL", userID).
+		Pluck("image_url", &urls).Error
+	return urls, err
 }
 
 // ListRecycleBin 回收站列表
@@ -176,10 +192,22 @@ func (r *QuestionRepository) ListRecycleBin(ctx context.Context, userID int64, p
 
 // ClearRecycleBin 清空回收站
 func (r *QuestionRepository) ClearRecycleBin(ctx context.Context, userID int64) (int64, error) {
-	result := r.db.WithContext(ctx).Unscoped().
-		Where("user_id = ? AND deleted_at IS NOT NULL", userID).
-		Delete(&model.Question{})
-	return result.RowsAffected, result.Error
+	var affected int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先清理这些回收站题目的知识点关联，否则 fk_qk_question 会阻止删除
+		if err := tx.Exec(
+			"DELETE FROM question_knowledge WHERE question_id IN (SELECT id FROM questions WHERE user_id = ? AND deleted_at IS NOT NULL)",
+			userID,
+		).Error; err != nil {
+			return err
+		}
+		res := tx.Unscoped().
+			Where("user_id = ? AND deleted_at IS NOT NULL", userID).
+			Delete(&model.Question{})
+		affected = res.RowsAffected
+		return res.Error
+	})
+	return affected, err
 }
 
 // GetDueQuestions 获取今日待复习题目

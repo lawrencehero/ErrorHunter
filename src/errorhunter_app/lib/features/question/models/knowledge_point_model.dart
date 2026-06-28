@@ -45,16 +45,22 @@ class KnowledgePoint extends Equatable {
       'id': id,
       'name': name,
       'subject': subject,
+      'is_recommended': isRecommended,
       if (parentId != null) 'parent_id': parentId,
     };
   }
 
   factory KnowledgePoint.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'];
+    final rawParent = json['parent_id'];
     return KnowledgePoint(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      subject: json['subject'] as String,
-      parentId: json['parent_id'] as String?,
+      id: rawId is int ? rawId.toString() : rawId as String,
+      name: json['name'] as String? ?? '',
+      subject: json['subject'] as String? ?? '数学',
+      parentId: rawParent == null
+          ? null
+          : (rawParent is int ? rawParent.toString() : rawParent as String),
+      isRecommended: json['is_recommended'] as bool? ?? false,
     );
   }
 }

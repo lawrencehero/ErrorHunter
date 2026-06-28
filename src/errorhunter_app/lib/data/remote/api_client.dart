@@ -238,13 +238,19 @@ class _RefreshTokenInterceptor extends Interceptor {
       );
 
       final data = response.data;
-      if (data != null) {
-        final newAccessToken = data['access_token'] as String?;
-        final newRefreshToken = data['refresh_token'] as String?;
+      // ✅ 修复：后端响应结构是 {"code":0,"message":"success","data":{...}}
+      // 之前直接读 data['access_token'] 永远 null，因为 token 在嵌套的 data['data'] 里
+      Map<String, dynamic>? respData;
+      if (data is Map<String, dynamic>) {
+        respData = data['data'] as Map<String, dynamic>?;
+      }
+      if (respData != null) {
+        final newAccessToken = respData['access_token'] as String?;
+        final newRefreshToken = respData['refresh_token'] as String?;
 
-        if (newAccessToken != null) {
+        if (newAccessToken != null && newAccessToken.isNotEmpty) {
           await _prefs.setString('auth_access_token', newAccessToken);
-          if (newRefreshToken != null) {
+          if (newRefreshToken != null && newRefreshToken.isNotEmpty) {
             await _prefs.setString('auth_refresh_token', newRefreshToken);
           }
 
@@ -262,12 +268,14 @@ class _RefreshTokenInterceptor extends Interceptor {
             }
           }
         } else {
-          throw Exception('Invalid refresh response');
+          throw Exception('Refresh response missing access_token');
         }
       } else {
-        throw Exception('Empty refresh response');
+        throw Exception('Refresh response missing data field');
       }
-    } catch (_) {
+    } catch (e, stack) {
+      // ✅ 修复：记录日志便于排查（之前 catch (_) 把错误吞了）
+      debugPrint('[RefreshToken] failed: $e\n$stack');
       // 刷新失败 → 清除 Token，通知上层重新登录
       await _prefs.remove('auth_access_token');
       await _prefs.remove('auth_refresh_token');

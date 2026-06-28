@@ -9,6 +9,7 @@ import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
 import '../../../theme/animations.dart';
+import '../../../theme/theme_manager.dart';
 import '../models/review_report_model.dart';
 
 /// 自评按钮组 V2.0
@@ -157,6 +158,8 @@ class _EvalButtonState extends State<_EvalButton> {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
     final isColored = widget.isSelected || (_isPressed && widget.enabled);
 
     return GestureDetector(
@@ -176,12 +179,19 @@ class _EvalButtonState extends State<_EvalButton> {
             : Matrix4.identity(),
         decoration: BoxDecoration(
           gradient: isColored ? widget.gradient : null,
-          color: isColored ? null : AppColors.surface,
+          // 玻璃下未选中态用半透明白底，避免白底白字 / 白色硬块叠在玻璃渐变上。
+          color: isColored
+              ? null
+              : (isGlass ? Colors.white.withOpacity(0.12) : AppColors.surface),
           borderRadius: AppRadius.radiusLg,
           border: isColored
               ? null
-              : Border.all(color: AppColors.border, width: 1.5),
-          boxShadow: isColored && !_isPressed
+              : Border.all(
+                  color: isGlass
+                      ? Colors.white.withOpacity(0.25)
+                      : AppColors.border,
+                  width: 1.5),
+          boxShadow: (isColored && !_isPressed && !isGlass)
               ? [
                   BoxShadow(
                     color: widget.chunkyColor,
@@ -203,7 +213,7 @@ class _EvalButtonState extends State<_EvalButton> {
             Text(
               widget.label,
               style: AppTypography.primary.caption.copyWith(
-                color: isColored ? Colors.white : AppColors.textPrimary,
+                color: isColored ? Colors.white : tc.primary,
                 fontWeight: FontWeight.w700,
               ),
               textAlign: TextAlign.center,

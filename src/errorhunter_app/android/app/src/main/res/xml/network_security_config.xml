@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  错题猎手 - 网络安全配置
+  ─────────────────────────────────────────────
+  默认禁止明文 HTTP（Android 9+ 默认行为，更安全）
+  例外：允许内网开发服务器（局域网 IP + 模拟器 + 本地）走明文 HTTP
+  生产环境上线后应删除内网 IP，仅保留 HTTPS 域名
+-->
+<network-security-config>
+    <!-- 允许明文 HTTP 的例外域名/IP -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- 当前开发服务器 IP -->
+        <domain includeSubdomains="true">REDACTED_LAN</domain>
+        <!-- Android 模拟器访问宿主机 -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- 本地回环 -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+
+    <!-- 其他所有域：强制 HTTPS（更安全）-->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -3,18 +3,22 @@ library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/buttons/danger_button.dart';
 import '../../../widgets/common/buttons/primary_button.dart';
 import '../../../widgets/common/buttons/secondary_button.dart';
 import '../../../widgets/common/cards/base_card.dart';
 import '../../../widgets/common/dialogs/toast.dart';
 import '../../../widgets/common/divider.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/bloc/auth_state.dart';
 
 /// 注销步骤
 enum _DeactivateStep { explanation, verification, confirmation }
@@ -48,6 +52,13 @@ class _DeactivatePageState extends State<DeactivatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    // 玻璃拟态：背景为深色渐变，深色文字/边框对比度不足，改用主题感知文字色。
+    // 注销页主色调为危险红 AppColors.danger，在深色渐变上仍可读，故保留；
+    // 仅修复作为正文/次要文字误用的 textPrimary/textSecondary/textTertiary。
+    final isGlass = context.themeExt.isDarkBackground;
+    final inactiveTrack =
+        isGlass ? Colors.white.withOpacity(0.18) : AppColors.border;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -69,7 +80,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
         title: Text(
           '注销账号',
           style: AppTypography.primary.h3.copyWith(
-            color: AppColors.textPrimary,
+            color: tc.primary,
           ),
         ),
         centerTitle: true,
@@ -80,7 +91,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
           child: Column(
             children: [
               // ─── 步骤指示器 ──────────────────────────
-              _buildStepIndicator(),
+              _buildStepIndicator(inactiveTrack),
               SizedBox(height: AppSpacing.xl),
               // ─── 步骤内容 ────────────────────────────
               Expanded(child: _buildStepContent()),
@@ -91,13 +102,12 @@ class _DeactivatePageState extends State<DeactivatePage> {
     );
   }
 
-  Widget _buildStepIndicator() {
+  Widget _buildStepIndicator(Color inactiveTrack) {
     return Row(
       children: _DeactivateStep.values.asMap().entries.map((entry) {
         final index = entry.key;
         final step = entry.value;
         final isActive = step.index <= _currentStep.index;
-        final isCurrent = step == _currentStep;
 
         return Expanded(
           child: Row(
@@ -108,7 +118,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
                   decoration: BoxDecoration(
                     color: isActive
                         ? AppColors.danger
-                        : AppColors.border,
+                        : inactiveTrack,
                     borderRadius: AppRadius.radiusFull,
                   ),
                 ),
@@ -135,6 +145,13 @@ class _DeactivatePageState extends State<DeactivatePage> {
 
   // ─── Step 1: 注销说明 ────────────────────────────────
   Widget _buildExplanationStep() {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    // 玻璃下深橙文字/浅橙底在深色渐变上既刺眼又低对比：
+    // 改用半透明白底 + 暖琥珀强调，与全站玻璃强调色一致。
+    final accent = isGlass ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
+    final accentDeep =
+        isGlass ? const Color(0xFFFFAB91) : const Color(0xFFBF360C);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -143,10 +160,14 @@ class _DeactivatePageState extends State<DeactivatePage> {
           width: double.infinity,
           padding: EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF3E0), // 浅橙色背景
+            color: isGlass
+                ? Colors.white.withOpacity(0.12)
+                : const Color(0xFFFFF3E0), // 浅橙色背景
             borderRadius: AppRadius.radiusMd,
             border: Border.all(
-              color: const Color(0xFFFFB74D).withOpacity(0.5),
+              color: isGlass
+                  ? Colors.white.withOpacity(0.25)
+                  : const Color(0xFFFFB74D).withOpacity(0.5),
             ),
           ),
           child: Row(
@@ -155,7 +176,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
               Icon(
                 Icons.supervised_user_circle,
                 size: 28,
-                color: const Color(0xFFE65100),
+                color: accent,
               ),
               SizedBox(width: AppSpacing.sm),
               Expanded(
@@ -165,7 +186,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
                     Text(
                       '此操作需要家长协助完成',
                       style: AppTypography.primary.body.copyWith(
-                        color: const Color(0xFFE65100),
+                        color: accent,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -173,7 +194,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
                     Text(
                       '如果你是小学生，请让爸爸妈妈帮你操作哦',
                       style: AppTypography.primary.caption.copyWith(
-                        color: const Color(0xFFBF360C),
+                        color: isGlass ? tc.secondary : accentDeep,
                       ),
                     ),
                   ],
@@ -205,7 +226,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
               Text(
                 '注销账号后，以下数据将被永久删除且无法恢复：',
                 style: AppTypography.primary.body.copyWith(
-                  color: AppColors.textPrimary,
+                  color: tc.primary,
                 ),
               ),
               SizedBox(height: AppSpacing.sm),
@@ -220,7 +241,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
                           child: Text(
                             item,
                             style: AppTypography.primary.body.copyWith(
-                              color: AppColors.textSecondary,
+                              color: tc.secondary,
                             ),
                           ),
                         ),
@@ -252,7 +273,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
               Text(
                 '提交注销申请后有7天冷静期。在此期间重新登录即可撤销注销申请。冷静期结束后账号将被永久删除。',
                 style: AppTypography.primary.body.copyWith(
-                  color: AppColors.textSecondary,
+                  color: tc.secondary,
                 ),
               ),
             ],
@@ -273,7 +294,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
             child: Text(
               '我再想想',
               style: AppTypography.primary.caption.copyWith(
-                color: AppColors.textTertiary,
+                color: tc.tertiary,
               ),
             ),
           ),
@@ -292,13 +313,24 @@ class _DeactivatePageState extends State<DeactivatePage> {
 
   // ─── Step 2: 身份验证 ────────────────────────────────
   Widget _buildVerificationStep() {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    // 玻璃下蓝色 brandPrimary 作文字对比度不足，改用暖琥珀；
+    // 输入框底色不能用近白 AppColors.background，改用半透明白。
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    final inputFill = isGlass
+        ? Colors.white.withOpacity(0.12)
+        : AppColors.background;
+    final inputBorder = isGlass
+        ? Colors.white.withOpacity(0.25)
+        : const Color(0x00000000);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           '为了确认是您本人操作，请验证手机号',
           style: AppTypography.primary.body.copyWith(
-            color: AppColors.textSecondary,
+            color: tc.secondary,
           ),
         ),
         SizedBox(height: AppSpacing.xl),
@@ -310,7 +342,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
               Text(
                 '绑定手机号',
                 style: AppTypography.primary.caption.copyWith(
-                  color: AppColors.textSecondary,
+                  color: tc.secondary,
                 ),
               ),
               SizedBox(height: AppSpacing.sm),
@@ -318,14 +350,22 @@ class _DeactivatePageState extends State<DeactivatePage> {
                 controller: _phoneController,
                 enabled: false,
                 style: AppTypography.primary.body.copyWith(
-                  color: AppColors.textPrimary,
+                  color: tc.primary,
                 ),
                 decoration: InputDecoration(
                   filled: true,
-                  fillColor: AppColors.background,
+                  fillColor: inputFill,
                   border: OutlineInputBorder(
                     borderRadius: AppRadius.radiusMd,
                     borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: AppRadius.radiusMd,
+                    borderSide: BorderSide(color: inputBorder, width: 0.5),
+                  ),
+                  disabledBorder: OutlineInputBorder(
+                    borderRadius: AppRadius.radiusMd,
+                    borderSide: BorderSide(color: inputBorder, width: 0.5),
                   ),
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
@@ -345,7 +385,7 @@ class _DeactivatePageState extends State<DeactivatePage> {
               Text(
                 '验证码',
                 style: AppTypography.primary.caption.copyWith(
-                  color: AppColors.textSecondary,
+                  color: tc.secondary,
                 ),
               ),
               SizedBox(height: AppSpacing.sm),
@@ -357,17 +397,28 @@ class _DeactivatePageState extends State<DeactivatePage> {
                       keyboardType: TextInputType.number,
                       maxLength: 6,
                       style: AppTypography.primary.body.copyWith(
-                        color: AppColors.textPrimary,
+                        color: tc.primary,
                         letterSpacing: 4,
                       ),
                       decoration: InputDecoration(
                         hintText: '请输入验证码',
+                        hintStyle: AppTypography.primary.body.copyWith(
+                          color: tc.tertiary,
+                        ),
                         counterText: '',
                         filled: true,
-                        fillColor: AppColors.background,
+                        fillColor: inputFill,
                         border: OutlineInputBorder(
                           borderRadius: AppRadius.radiusMd,
                           borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: AppRadius.radiusMd,
+                          borderSide: BorderSide(color: inputBorder, width: 0.5),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: AppRadius.radiusMd,
+                          borderSide: BorderSide(color: accent, width: 1),
                         ),
                         contentPadding: EdgeInsets.symmetric(
                           horizontal: AppSpacing.md,
@@ -386,18 +437,23 @@ class _DeactivatePageState extends State<DeactivatePage> {
                       ),
                       decoration: BoxDecoration(
                         color: _countdownSeconds > 0
-                            ? AppColors.textTertiary.withOpacity(0.2)
-                            : AppColors.brandPrimary.withOpacity(0.1),
+                            ? (isGlass
+                                ? Colors.white.withOpacity(0.08)
+                                : AppColors.textTertiary.withOpacity(0.2))
+                            : accent.withOpacity(isGlass ? 0.22 : 0.1),
                         borderRadius: AppRadius.radiusMd,
+                        border: Border.all(
+                          color: _countdownSeconds > 0
+                              ? Colors.transparent
+                              : accent.withOpacity(0.5),
+                        ),
                       ),
                       child: Text(
                         _countdownSeconds > 0
                             ? '重新发送 (${_countdownSeconds}s)'
                             : '获取验证码',
                         style: AppTypography.primary.caption.copyWith(
-                          color: _countdownSeconds > 0
-                              ? AppColors.textTertiary
-                              : AppColors.brandPrimary,
+                          color: _countdownSeconds > 0 ? tc.tertiary : accent,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -460,11 +516,16 @@ class _DeactivatePageState extends State<DeactivatePage> {
 
   // ─── Step 3: 确认注销 ────────────────────────────────
   Widget _buildConfirmationStep() {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    // 玻璃下 danger.withOpacity(0.03) 几乎不可见，提升填充至可读强度。
     return Column(
       children: [
         EHBaseCard(
           border: Border.all(color: AppColors.danger.withOpacity(0.3)),
-          backgroundColor: AppColors.danger.withOpacity(0.03),
+          backgroundColor: isGlass
+              ? AppColors.danger.withOpacity(0.12)
+              : AppColors.danger.withOpacity(0.03),
           child: Column(
             children: [
               Icon(Icons.error_outline_rounded,
@@ -478,10 +539,10 @@ class _DeactivatePageState extends State<DeactivatePage> {
               ),
               SizedBox(height: AppSpacing.sm),
               Text(
-                '您即将注销账号「小明同学」\n此操作不可逆，请再次确认',
+                _buildConfirmationText(context),
                 textAlign: TextAlign.center,
                 style: AppTypography.primary.body.copyWith(
-                  color: AppColors.textSecondary,
+                  color: tc.secondary,
                 ),
               ),
             ],
@@ -503,6 +564,12 @@ class _DeactivatePageState extends State<DeactivatePage> {
         ),
       ],
     );
+  }
+
+  String _buildConfirmationText(BuildContext context) {
+    final authState = context.read<AuthBloc>().state;
+    final nickname = authState is Authenticated ? authState.user.nickname : '用户';
+    return '您即将注销账号「$nickname」\n此操作不可逆，请再次确认';
   }
 
   void _handleFinalDeactivate() {

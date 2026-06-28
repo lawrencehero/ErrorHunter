@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 
 /// 复习进度条
@@ -28,6 +29,9 @@ class ReviewProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -39,13 +43,13 @@ class ReviewProgressBar extends StatelessWidget {
               Text(
                 '复习进度',
                 style: AppTypography.primary.caption.copyWith(
-                  color: AppColors.textSecondary,
+                  color: tc.secondary,
                 ),
               ),
               Text(
                 '第${currentRound}轮 / 共${totalRounds}轮',
                 style: AppTypography.primary.caption.copyWith(
-                  color: AppColors.brandPrimary,
+                  color: accent,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -58,18 +62,27 @@ class ReviewProgressBar extends StatelessWidget {
           child: LinearProgressIndicator(
             value: _progress,
             minHeight: height,
-            backgroundColor: AppColors.border.withOpacity(0.3),
-            valueColor: AlwaysStoppedAnimation<Color>(_gradientColor),
+            backgroundColor: isGlass
+                ? Colors.white.withOpacity(0.15)
+                : AppColors.border.withOpacity(0.3),
+            valueColor: AlwaysStoppedAnimation<Color>(
+                _gradientColor(isGlass: isGlass)),
           ),
         ),
       ],
     );
   }
 
-  Color get _gradientColor {
-    if (_progress >= 1.0) return AppColors.success;
-    if (_progress >= 0.6) return AppColors.brandPrimary;
-    if (_progress >= 0.3) return AppColors.warning;
-    return AppColors.danger;
+  Color _gradientColor({required bool isGlass}) {
+    if (_progress >= 1.0) {
+      return isGlass ? const Color(0xFF81C784) : AppColors.success;
+    }
+    if (_progress >= 0.6) {
+      return isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    }
+    if (_progress >= 0.3) {
+      return isGlass ? const Color(0xFFFFB74D) : AppColors.warning;
+    }
+    return isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
   }
 }

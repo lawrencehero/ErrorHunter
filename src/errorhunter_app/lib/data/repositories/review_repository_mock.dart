@@ -25,4 +25,15 @@ class ReviewRepositoryMock implements ReviewRepository {
   Future<int> getStreakDays() async {
     return _dataSource.getStreakDays();
   }
+
+  /// Mock 模式无后端，提交记为空操作（不抛错，保证复习流程可跑通）。
+  @override
+  Future<void> submitReviewResult({
+    required String questionId,
+    required String selfRating,
+    int? reviewDurationSec,
+    bool isReviveCheck = false,
+  }) async {
+    // no-op
+  }
 }

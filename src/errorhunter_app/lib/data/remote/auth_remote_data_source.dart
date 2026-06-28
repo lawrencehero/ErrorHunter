@@ -2,6 +2,8 @@
 /// 调用后端认证 API，替代 MockAuthDataSource
 library;
 
+import 'package:dio/dio.dart';
+
 import '../../features/auth/bloc/auth_state.dart';
 import '../remote/api_client.dart';
 import '../remote/api_endpoints.dart';
@@ -24,10 +26,11 @@ class AuthRemoteDataSource {
   }
 
   /// 验证 OTP 并注册/登录，返回用户信息 + token
+  /// grade 为 null 时走"登录"路径（不传 grade 给后端，由后端按手机号识别用户）
   Future<AuthResult> verifyOtp({
     required String phone,
     required String otp,
-    required String grade,
+    String? grade,
     String? nickname,
   }) async {
     final response = await _client.post<Map<String, dynamic>>(
@@ -36,7 +39,7 @@ class AuthRemoteDataSource {
         'phone': phone,
         'code': otp,
         'scene': 'REGISTER',
-        'grade': grade,
+        if (grade != null && grade.isNotEmpty) 'grade': grade,
         if (nickname != null && nickname.isNotEmpty) 'nickname': nickname,
       },
     );
@@ -60,7 +63,8 @@ class AuthRemoteDataSource {
       id: (userData?['id'] ?? 0).toString(),
       phone: phone,
       nickname: userData?['nickname'] as String? ?? '',
-      grade: userData?['grade'] as String? ?? grade,
+      // 已注册用户登录时，后端返回的 grade 优先；否则用入参
+      grade: userData?['grade'] as String? ?? grade ?? '',
       token: accessToken,
       isFirstLogin: true,
     );
@@ -69,12 +73,26 @@ class AuthRemoteDataSource {
   }
 
   /// 验证 Token 有效性
+  ///
+  /// 区分错误类型：
+  /// - 401/403：token 明确无效，返回 false（让上层清 token）
+  /// - 网络错误 / 5xx：视为"无法验证"，返回 true（保留本地登录态）
+  /// - 其他异常：保守返回 true
   Future<bool> validateToken(String token) async {
     try {
       await _client.get(ApiEndpoints.user);
       return true;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401 || code == 403) {
+        // token 明确无效或过期
+        return false;
+      }
+      // 网络错误 / 5xx / 超时 → 不要错杀本地登录态
+      return true;
     } catch (_) {
-      return false;
+      // 未知错误，保守保留本地登录态
+      return true;
     }
   }
 

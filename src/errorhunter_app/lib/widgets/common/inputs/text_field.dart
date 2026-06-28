@@ -8,6 +8,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 
 /// 文本输入框
 class EHTextField extends StatefulWidget {
@@ -80,15 +81,34 @@ class _EHTextFieldState extends State<EHTextField> {
 
   bool get _hasError => widget.errorText != null && widget.errorText!.isNotEmpty;
 
-  Color get _borderColor {
-    if (!widget.enabled) return AppColors.border.withOpacity(0.5);
-    if (_hasError) return AppColors.danger;
-    if (_isFocused) return AppColors.brandPrimary;
-    return AppColors.border;
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    final tc = context.textColors;
+    // 玻璃下强调色提亮为暖琥珀，游戏化保持品牌蓝
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    // 玻璃下语义色提亮：danger
+    final dangerColor = isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
+
+    Color borderColor() {
+      if (!widget.enabled) {
+        return isGlass
+            ? Colors.white.withOpacity(0.15)
+            : AppColors.border.withOpacity(0.5);
+      }
+      if (_hasError) return dangerColor;
+      if (_isFocused) return accent;
+      return isGlass ? Colors.white.withOpacity(0.25) : AppColors.border;
+    }
+
+    // 玻璃下底色：半透明白；游戏化：白/背景灰（保持原样）
+    final resolvedFill = widget.fillColor ??
+        (isGlass
+            ? (widget.enabled
+                ? Colors.white.withOpacity(0.12)
+                : Colors.white.withOpacity(0.06))
+            : (widget.enabled ? Colors.white : AppColors.background));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -98,7 +118,7 @@ class _EHTextFieldState extends State<EHTextField> {
           Text(
             widget.label!,
             style: AppTypography.primary.caption.copyWith(
-              color: _hasError ? AppColors.danger : AppColors.textSecondary,
+              color: _hasError ? dangerColor : tc.secondary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -107,20 +127,21 @@ class _EHTextFieldState extends State<EHTextField> {
         // Input Field
         Container(
           decoration: BoxDecoration(
-            color: widget.fillColor ?? (widget.enabled ? Colors.white : AppColors.background),
+            color: resolvedFill,
             borderRadius: AppRadius.radiusMd,
-            border: Border.all(color: _borderColor, width: _isFocused ? 1.5 : 1),
+            border: Border.all(color: borderColor(), width: _isFocused ? 1.5 : 1),
           ),
           child: TextField(
             controller: widget.controller,
             focusNode: _focusNode,
+            cursorColor: accent,
             decoration: InputDecoration(
               hintText: widget.hintText,
               hintStyle: AppTypography.primary.body.copyWith(
-                color: AppColors.textTertiary,
+                color: tc.tertiary,
               ),
               prefixIcon: widget.prefixIcon != null
-                  ? Icon(widget.prefixIcon, size: 20, color: AppColors.textSecondary)
+                  ? Icon(widget.prefixIcon, size: 20, color: tc.secondary)
                   : null,
               suffixIcon: widget.suffixIcon,
               contentPadding: EdgeInsets.symmetric(
@@ -131,7 +152,7 @@ class _EHTextFieldState extends State<EHTextField> {
               counterText: '',
             ),
             style: AppTypography.primary.body.copyWith(
-              color: widget.enabled ? AppColors.textPrimary : AppColors.textTertiary,
+              color: widget.enabled ? tc.primary : tc.tertiary,
             ),
             obscureText: widget.obscureText,
             maxLines: widget.maxLines,
@@ -151,7 +172,7 @@ class _EHTextFieldState extends State<EHTextField> {
           Text(
             widget.errorText!,
             style: AppTypography.primary.caption.copyWith(
-              color: AppColors.danger,
+              color: dangerColor,
               fontSize: 12,
             ),
           ),

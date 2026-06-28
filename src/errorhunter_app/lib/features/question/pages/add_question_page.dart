@@ -3,13 +3,19 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../router/app_router.dart';
+import '../../../di/injection.dart';
+import '../../../domain/repositories/knowledge_point_repository.dart';
 import '../../../theme/theme_manager.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
@@ -26,9 +32,11 @@ import '../bloc/question_event.dart';
 import '../bloc/question_state.dart';
 import '../models/question_model.dart';
 import '../models/knowledge_point_model.dart';
+import '../models/ocr_result.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/image_crop_section.dart';
 import '../widgets/ocr_text_section.dart';
+import '../widgets/math_text.dart' show normalizeMathText;
 import '../widgets/error_category_selector.dart';
 import '../widgets/knowledge_point_selector.dart';
 import '../widgets/image_preview.dart';
@@ -46,6 +54,10 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
 
   // Step 1 data
   String? _imagePath;
+  String? _originalImagePath; // 保留原始图片路径用于裁剪
+  Size? _originalImageSize; // 原始图片真实宽高（用于 BoxFit.contain 坐标转换）
+  Rect _cropRect = const Rect.fromLTWH(0.05, 0.05, 0.90, 0.90);
+  bool _isCropping = false;
 
   // Step 2 data
   OcrStatus _ocrStatus = OcrStatus.loading;
@@ -55,23 +67,23 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
   List<KnowledgePoint> _selectedKnowledgePoints = [];
   ErrorCategory? _recommendedCategory;
 
+  // OCR 识别到的图形（已裁剪为 PNG bytes）；为空时展示原图
+  List<Uint8List> _figureImages = [];
+
+  // OCR 上传后的图片 URL（MinIO），保存错题时用它而非本地临时路径
+  String _uploadedImageUrl = '';
+
+  // 知识点（按年级从后端拉取）
+  List<KnowledgePoint> _availablePoints = const [];
+  List<KnowledgePoint> _recommendedPoints = const [];
+  bool _kpLoading = true;
+  String? _kpError;
+
   // Step 3 data
   ErrorCategory? _selectedErrorCategory;
   List<String> _selectedSubCategories = [];
   final List<String> _customTags = [];
   final _tagController = TextEditingController();
-
-  // Mock data for knowledge points
-  final _recommendedPoints = const [
-    KnowledgePoint(id: 'kp01', name: '四则运算', subject: '数学', isRecommended: true),
-    KnowledgePoint(id: 'kp02', name: '运算顺序', subject: '数学', isRecommended: true),
-  ];
-  final _availablePoints = const [
-    KnowledgePoint(id: 'kp03', name: '分数化简', subject: '数学'),
-    KnowledgePoint(id: 'kp04', name: '有余数的除法', subject: '数学'),
-    KnowledgePoint(id: 'kp05', name: '长方形周长与面积', subject: '数学'),
-    KnowledgePoint(id: 'kp06', name: '病句辨析', subject: '语文'),
-  ];
 
   final _subCategoriesMap = {
     ErrorCategory.knowledge: ['概念混淆', '公式记错', '知识点遗忘'],
@@ -81,12 +93,48 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
   };
 
   @override
+  void initState() {
+    super.initState();
+    // 延后一帧，待 BlocProvider/AuthBloc 可读后再按年级拉取知识点
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadKnowledgePoints());
+  }
+
+  @override
   void dispose() {
     _ocrController.dispose();
     _myAnswerController.dispose();
     _correctAnswerController.dispose();
     _tagController.dispose();
     super.dispose();
+  }
+
+  /// 按当前用户年级从后端拉取知识点
+  Future<void> _loadKnowledgePoints() async {
+    final authState = context.read<AuthBloc>().state;
+    final grade = authState is Authenticated ? authState.user.grade : '';
+    if (grade.isEmpty) {
+      if (mounted) setState(() => _kpLoading = false);
+      return;
+    }
+    setState(() {
+      _kpLoading = true;
+      _kpError = null;
+    });
+    try {
+      final all = await sl<KnowledgePointRepository>().getByGrade(grade: grade);
+      if (!mounted) return;
+      setState(() {
+        _availablePoints = all;
+        _recommendedPoints = all.where((p) => p.isRecommended).toList();
+        _kpLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _kpError = '知识点加载失败，请检查网络';
+        _kpLoading = false;
+      });
+    }
   }
 
   bool get _canProceedStep2 => _imagePath != null;
@@ -100,6 +148,8 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
     if (kIsWeb) {
       setState(() {
         _imagePath = 'demo_question.jpg';
+        _originalImagePath = 'demo_question.jpg';
+        _cropRect = const Rect.fromLTWH(0.05, 0.05, 0.90, 0.90);
       });
       await Future.delayed(const Duration(milliseconds: 800));
       if (mounted) {
@@ -112,37 +162,81 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
       return;
     }
 
-    // 原生环境：拍照/选择图片
-    try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: source, maxWidth: 1920);
+    // 原生环境：先检查权限
+    final permission = source == ImageSource.camera
+        ? Permission.camera
+        : Permission.photos;
 
-      if (pickedFile == null) {
+    final status = await permission.status;
+    if (status.isDenied) {
+      // 首次请求权限
+      final result = await permission.request();
+      if (!result.isGranted) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('无法访问相册/相机，请在系统设置中开启权限'),
+            content: Text('需要相机/相册权限才能拍照或选择图片'),
             duration: Duration(seconds: 3),
           ),
         );
         return;
       }
+    } else if (status.isPermanentlyDenied) {
+      // 用户已永久拒绝，引导去系统设置
+      if (!mounted) return;
+      final shouldOpen = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('需要权限'),
+          content: Text(
+            source == ImageSource.camera
+                ? '错题猎手需要相机权限来拍照录入错题，请在系统设置中开启。'
+                : '错题猎手需要相册权限来选择图片，请在系统设置中开启。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('去设置'),
+            ),
+          ],
+        ),
+      );
+      if (shouldOpen == true) {
+        await openAppSettings();
+      }
+      return;
+    }
+
+    // 权限已授予，执行拍照/选图
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: source, maxWidth: 1920);
+
+      if (pickedFile == null) {
+        // 用户取消了选择，不提示
+        return;
+      }
 
       if (!mounted) return;
 
-      // 跳过裁剪步骤（image_cropper 在部分真机上会崩溃）
-      // 直接使用原始图片，后续版本可替换为内置裁剪组件
+      // 使用自研交互式裁剪框（替代 image_cropper，避免真机崩溃）
+      // 裁剪在用户点击"下一步"时执行（见 _nextStep 方法）
       final imagePath = pickedFile.path;
+
+      // 读取图片真实尺寸（用于 BoxFit.contain 坐标转换）
+      final imageSize = await _getImageSize(imagePath);
 
       setState(() {
         _imagePath = imagePath;
-        _ocrStatus = OcrStatus.loading;
+        _originalImagePath = imagePath; // 保留原始路径用于裁剪
+        _cropRect = const Rect.fromLTWH(0.05, 0.05, 0.90, 0.90); // 重置裁剪框
+        _originalImageSize = imageSize;
       });
-
-      // 触发 Mock OCR 识别
-      if (mounted) {
-        context.read<QuestionBloc>().add(OcrImage(imagePath));
-      }
+      // OCR 在用户裁剪后点击"下一步"时触发（见 _nextStep）
     } on PlatformException catch (e) {
       if (e.code == 'cancelled' || e.code == 'canceled') return;
       if (!mounted) return;
@@ -167,10 +261,15 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
     if (state is OcrCompleted) {
       setState(() {
         _ocrStatus = OcrStatus.success;
-        _ocrController.text = state.text;
+        // 归一化度数符号：OCR 常把 ° 误识别为 ^{。}，这里还原为 °
+        _ocrController.text = normalizeMathText(state.text);
         // AI recommends error category based on content
         _recommendedCategory = ErrorCategory.skill;
+        _figureImages = [];
+        _uploadedImageUrl = state.imageUrl;
       });
+      // 裁剪图形区域用于展示
+      _loadFigureImages(state.figures);
     } else if (state is OcrFailed) {
       setState(() {
         _ocrStatus = OcrStatus.failed;
@@ -182,10 +281,177 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
     }
   }
 
-  void _nextStep() {
-    if (_currentStep < 3) {
+  /// 把 OCR 识别到的图形区域从原图裁剪出来供展示
+  Future<void> _loadFigureImages(List<OcrFigure> figures) async {
+    if (_imagePath == null || figures.isEmpty) {
+      if (mounted) setState(() => _figureImages = []);
+      return;
+    }
+    final results = <Uint8List>[];
+    for (final f in figures) {
+      final bytes = await _cropRegionToBytes(
+          _imagePath!, f.x, f.y, f.width, f.height);
+      if (bytes != null) results.add(bytes);
+    }
+    if (mounted) setState(() => _figureImages = results);
+  }
+
+  /// 按像素坐标从图片裁剪区域 → PNG bytes
+  Future<Uint8List?> _cropRegionToBytes(
+      String path, int x, int y, int w, int h) async {
+    if (kIsWeb || path == 'demo_question.jpg') return null;
+    final file = File(path);
+    if (!await file.exists()) return null;
+    try {
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+
+      final rx = x.clamp(0, image.width);
+      final ry = y.clamp(0, image.height);
+      final rw = w.clamp(0, image.width - rx);
+      final rh = h.clamp(0, image.height - ry);
+      if (rw <= 0 || rh <= 0) {
+        image.dispose();
+        return null;
+      }
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(rx.toDouble(), ry.toDouble(), rw.toDouble(), rh.toDouble()),
+        Rect.fromLTWH(0, 0, rw.toDouble(), rh.toDouble()),
+        Paint(),
+      );
+      final picture = recorder.endRecording();
+      final cropped = await picture.toImage(rw, rh);
+      final bd = await cropped.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      cropped.dispose();
+      picture.dispose();
+      if (bd == null) return null;
+      return bd.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _nextStep() async {
+    if (_currentStep == 1 && _imagePath != null && _originalImagePath != null) {
+      // Step1 → Step2: 执行图片裁剪
+      if (_isCropping) return;
+      setState(() => _isCropping = true);
+
+      try {
+        final croppedPath = await _cropImage(_originalImagePath!, _cropRect);
+        if (!mounted) return;
+        setState(() {
+          _imagePath = croppedPath;
+          _isCropping = false;
+          _currentStep = 2;
+          _ocrStatus = OcrStatus.loading;
+        });
+        // 裁剪完成后，对裁剪后的图片触发 OCR 识别
+        if (mounted) {
+          context.read<QuestionBloc>().add(OcrImage(croppedPath));
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isCropping = false);
+        // 裁剪失败时使用原图继续
+        setState(() {
+          _imagePath = _originalImagePath;
+          _currentStep = 2;
+        });
+      }
+    } else if (_currentStep < 3) {
       setState(() => _currentStep++);
     }
+  }
+
+  /// 读取图片真实尺寸
+  Future<Size?> _getImageSize(String path) async {
+    if (kIsWeb || path == 'demo_question.jpg') return null;
+    final file = File(path);
+    if (!await file.exists()) return null;
+    try {
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      final size = Size(image.width.toDouble(), image.height.toDouble());
+      image.dispose();
+      return size;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 根据裁剪比例裁剪图片并保存到临时文件
+  ///
+  /// 修复 Bug #2：cropRatio 现在是**图片坐标**（0~1，相对于图片实际像素）
+  /// InteractiveCropFrame 已经处理了 BoxFit.contain 的容器坐标 → 图片坐标转换
+  Future<String> _cropImage(String inputPath, Rect cropRatio) async {
+    // Web 环境不执行真实裁剪
+    if (kIsWeb || inputPath == 'demo_question.jpg') {
+      return inputPath;
+    }
+
+    final file = File(inputPath);
+    if (!await file.exists()) return inputPath;
+
+    // 读取并解码图片
+    final bytes = await file.readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+
+    // cropRatio 已经是图片坐标（0~1），直接计算像素级裁剪区域
+    final srcRect = Rect.fromLTWH(
+      (cropRatio.left * image.width).roundToDouble(),
+      (cropRatio.top * image.height).roundToDouble(),
+      (cropRatio.width * image.width).roundToDouble(),
+      (cropRatio.height * image.height).roundToDouble(),
+    );
+
+    // 确保裁剪区域有效
+    if (srcRect.width <= 0 || srcRect.height <= 0) {
+      image.dispose();
+      return inputPath;
+    }
+
+    // 使用 Canvas 裁剪
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawImageRect(
+      image,
+      srcRect,
+      Rect.fromLTWH(0, 0, srcRect.width, srcRect.height),
+      Paint(),
+    );
+    final picture = recorder.endRecording();
+    final croppedImage = await picture.toImage(
+      srcRect.width.round(),
+      srcRect.height.round(),
+    );
+
+    // 编码为 PNG
+    final croppedBytes = await croppedImage.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    croppedImage.dispose();
+    picture.dispose();
+
+    if (croppedBytes == null) return inputPath;
+
+    // 保存到临时文件
+    final tempDir = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final outputPath = '${tempDir.path}/cropped_$timestamp.png';
+    await File(outputPath).writeAsBytes(croppedBytes.buffer.asUint8List());
+
+    return outputPath;
   }
 
   void _prevStep() {
@@ -198,7 +464,8 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
     if (!_canSave) return;
 
     context.read<QuestionBloc>().add(AddQuestion(
-          imageUrl: _imagePath ?? '',
+          // 优先用上传到对象存储的 URL；OCR 未上传成功时回退本地路径
+          imageUrl: _uploadedImageUrl.isNotEmpty ? _uploadedImageUrl : (_imagePath ?? ''),
           ocrText: _ocrController.text.isEmpty ? null : _ocrController.text,
           myAnswer: _myAnswerController.text.isEmpty
               ? null
@@ -222,11 +489,19 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
   @override
   Widget build(BuildContext context) {
     final tc = context.textColors;
+    // 玻璃拟态主题：背景为深色渐变，蓝色 brandPrimary 对比度不足，
+    // 改用暖琥珀色作强调色（与 question_list_page.dart / profile_page.dart 一致）。
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return BlocConsumer<QuestionBloc, QuestionState>(
       listener: (context, state) {
         _onOcrStateChanged(state);
         if (state is QuestionAdded) {
           _onQuestionAdded();
+        } else if (state is QuestionAddFailed) {
+          EHToast.show(context,
+              message: state.message, type: EHToastType.error);
         }
       },
       builder: (context, state) {
@@ -241,6 +516,9 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
+            // ✅ 修复 Bug #4：必须显式设为 false，否则 Flutter 会自动添加 back 行为
+            // 导致自定义 leading 的 × 按钮行为错乱，跳转后显示空白页
+            automaticallyImplyLeading: false,
             leading: GestureDetector(
               onTap: () => context.go(Routes.home),
               child: Icon(Icons.close_rounded, color: tc.secondary),
@@ -257,7 +535,7 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
                 Padding(
                   padding: EdgeInsets.only(right: AppSpacing.base),
                   child: GestureDetector(
-                    onTap: () {
+                    onTap: _isCropping ? null : () {
                       if (_currentStep == 1 && !_canProceedStep2) {
                         EHToast.show(context, message: '请先拍照或选择图片', type: EHToastType.warning);
                         return;
@@ -269,12 +547,23 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
                       _nextStep();
                     },
                     child: Center(
-                      child: Text(
-                        '下一步',
-                        style: AppTypography.primary.button.copyWith(
-                          color: AppColors.brandPrimary,
-                        ),
-                      ),
+                      child: _isCropping
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: accentColor,
+                              ),
+                            )
+                          : Text(
+                              '下一步',
+                              style: AppTypography.primary.button.copyWith(
+                                color: _isCropping
+                                    ? accentColor.withOpacity(0.4)
+                                    : accentColor,
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -321,9 +610,13 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
     final tc = context.textColors;
     return ImageCropSection(
       key: key,
-      imagePath: _imagePath,
+      imagePath: _originalImagePath ?? _imagePath, // 显示原始图片供裁剪
+      imageSize: _originalImageSize, // 传给 InteractiveCropFrame 做 BoxFit.contain 坐标转换
       onTakePhoto: () => _pickImage(ImageSource.camera),
       onPickFromGallery: () => _pickImage(ImageSource.gallery),
+      onCropChanged: (rect) {
+        setState(() => _cropRect = rect);
+      },
     );
   }
 
@@ -331,6 +624,9 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
 
   Widget _buildStep2({Key? key}) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return SingleChildScrollView(
       key: key,
       padding: AppSpacing.pagePadding,
@@ -351,7 +647,11 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
                 height: 160,
                 decoration: BoxDecoration(
                   borderRadius: AppRadius.radiusLg,
-                  border: Border.all(color: AppColors.border, width: 1.5),
+                  border: Border.all(
+                      color: isGlass
+                          ? Colors.white.withOpacity(0.25)
+                          : AppColors.border,
+                      width: 1.5),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(
@@ -360,17 +660,20 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
                     // Web 环境：显示 Mock 占位
                     if (kIsWeb || _imagePath == 'demo_question.jpg')
                       Container(
-                        color: AppColors.brandPrimaryPale,
+                        color: isGlass
+                            ? Colors.white.withOpacity(0.12)
+                            : AppColors.brandPrimaryPale,
                         child: Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.image_outlined, size: 32, color: AppColors.brandPrimary),
+                              Icon(Icons.image_outlined,
+                                  size: 32, color: accentColor),
                               SizedBox(width: AppSpacing.sm),
                               Text(
                                 '示例题目图片',
                                 style: AppTypography.primary.body.copyWith(
-                                  color: AppColors.brandPrimary,
+                                  color: accentColor,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -383,7 +686,9 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
                         File(_imagePath!),
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          color: AppColors.background,
+                          color: isGlass
+                              ? Colors.white.withOpacity(0.12)
+                              : AppColors.background,
                           child: Center(
                             child: Icon(Icons.image, color: tc.tertiary),
                           ),
@@ -427,6 +732,12 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
             },
           ),
 
+          // 题目图形：OCR 识别到的图形区域裁剪展示；无图形坐标时展示原图
+          if (_ocrStatus == OcrStatus.success) ...[
+            SizedBox(height: AppSpacing.md),
+            _buildFiguresSection(tc),
+          ],
+
           SizedBox(height: AppSpacing.lg),
 
           // My wrong answer
@@ -449,13 +760,47 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
 
           SizedBox(height: AppSpacing.lg),
 
-          // Knowledge points
-          KnowledgePointSelector(
-            selectedPoints: _selectedKnowledgePoints,
-            onChanged: (points) => setState(() => _selectedKnowledgePoints = points),
-            recommendedPoints: _recommendedPoints,
-            availablePoints: _availablePoints,
-          ),
+          // Knowledge points（按当前用户年级从后端拉取）
+          if (_kpLoading)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: accentColor,
+                  strokeWidth: 2,
+                ),
+              ),
+            )
+          else if (_kpError != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _kpError!,
+                  style: AppTypography.primary.caption
+                      .copyWith(color: AppColors.danger),
+                ),
+                SizedBox(height: AppSpacing.sm),
+                GestureDetector(
+                  onTap: _loadKnowledgePoints,
+                  child: Text(
+                    '重试',
+                    style: AppTypography.primary.caption.copyWith(
+                      color: accentColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            KnowledgePointSelector(
+              selectedPoints: _selectedKnowledgePoints,
+              onChanged: (points) =>
+                  setState(() => _selectedKnowledgePoints = points),
+              recommendedPoints: _recommendedPoints,
+              availablePoints: _availablePoints,
+            ),
 
           SizedBox(height: AppSpacing.xxl),
         ],
@@ -463,10 +808,69 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
     );
   }
 
+  // ─── 题目图形展示 ─────────────────────────────────────────
+
+  Widget _buildFiguresSection(dynamic tc) {
+    final isGlass = context.themeExt.isDarkBackground;
+    final borderColor =
+        isGlass ? Colors.white.withOpacity(0.25) : AppColors.border;
+    final labelStyle = AppTypography.primary.caption.copyWith(
+      color: tc.secondary,
+      fontWeight: FontWeight.w500,
+    );
+    // 有裁剪出的图形区域 → 展示
+    if (_figureImages.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('题目图形', style: labelStyle),
+          SizedBox(height: AppSpacing.xs),
+          ..._figureImages.map((bytes) => Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: AppRadius.radiusMd,
+                    border: Border.all(color: borderColor),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.memory(bytes, fit: BoxFit.contain),
+                ),
+              )),
+        ],
+      );
+    }
+    // 无图形坐标（线条几何图/坐标系等 OCR 无法定位）→ 展示原图供查看
+    if (_imagePath != null &&
+        _imagePath != 'demo_question.jpg' &&
+        !kIsWeb) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('题目原图', style: labelStyle),
+          SizedBox(height: AppSpacing.xs),
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: AppRadius.radiusMd,
+              border: Border.all(color: borderColor),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Image.file(File(_imagePath!), fit: BoxFit.contain),
+          ),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   // ─── Step 3: Error Category & Save ─────────────────────────
 
   Widget _buildStep3(QuestionState state, {Key? key}) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     final isSaving = state is QuestionAdding;
     final subCats = _selectedErrorCategory != null
         ? _subCategoriesMap[_selectedErrorCategory] ?? []
@@ -519,20 +923,23 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
                           vertical: AppSpacing.sm,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.brandPrimary.withOpacity(0.1),
+                          color: accentColor.withOpacity(isGlass ? 0.2 : 0.1),
                           borderRadius: AppRadius.radiusFull,
+                          border: isGlass
+                              ? Border.all(color: accentColor.withOpacity(0.5))
+                              : null,
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(tag,
                                 style: AppTypography.primary.caption.copyWith(
-                                  color: AppColors.brandPrimary,
+                                  color: accentColor,
                                 )),
                             SizedBox(width: AppSpacing.xs),
                             GestureDetector(
                               onTap: () => setState(() => _customTags.remove(tag)),
-                              child: Icon(Icons.close, size: 14, color: AppColors.brandPrimary),
+                              child: Icon(Icons.close, size: 14, color: accentColor),
                             ),
                           ],
                         ),
@@ -546,7 +953,14 @@ class _AddQuestionPageState extends State<AddQuestionPage> {
                           vertical: AppSpacing.sm,
                         ),
                         decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+                          border: Border.all(
+                              color: isGlass
+                                  ? Colors.white.withOpacity(0.25)
+                                  : AppColors.border,
+                              style: BorderStyle.solid),
+                          color: isGlass
+                              ? Colors.white.withOpacity(0.12)
+                              : null,
                           borderRadius: AppRadius.radiusFull,
                         ),
                         child: Row(

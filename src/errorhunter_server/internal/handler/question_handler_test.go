@@ -85,7 +85,7 @@ func TestCreate_TooManyKnowledgePoints(t *testing.T) {
 	w := tc.doRequest("POST", "/questions", map[string]interface{}{
 		"image_url":           "https://example.com/img.jpg",
 		"error_category":      "KNOWLEDGE",
-		"knowledge_point_ids": []int{1, 2, 3, 4},
+		"knowledge_point_ids": []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
 	}, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

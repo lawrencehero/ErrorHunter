@@ -3,7 +3,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../data/remote/api_client.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/gradients.dart';
@@ -14,6 +16,9 @@ import '../../../theme/typography.dart';
 import '../../../theme/app_theme_mode.dart';
 import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/dialogs/confirm_dialog.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/bloc/auth_event.dart';
+import '../../auth/bloc/auth_state.dart';
 
 /// 个人中心页 V2.0
 class ProfilePage extends StatelessWidget {
@@ -22,12 +27,17 @@ class ProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.textColors;
-    // TODO: 替换为真实用户数据
-    const mockNickname = '小明同学';
-    const mockGrade = '五年级';
-    const mockEliminatedCount = 128;
-    const mockTotalCount = 156;
-    const mockStreakDays = 12;
+
+    // 从 AuthBloc 获取真实用户数据
+    final authState = context.watch<AuthBloc>().state;
+    final user = authState is Authenticated ? authState.user : null;
+
+    final nickname = user?.nickname ?? '同学';
+    final grade = _gradeCodeToLabel(user?.grade ?? '');
+    // TODO: 从 ReportBloc / Dashboard API 获取真实统计数据
+    const eliminatedCount = 0;
+    const totalCount = 0;
+    const streakDays = 0;
     const appVersion = 'v1.0.0';
 
     return Scaffold(
@@ -41,11 +51,11 @@ class ProfilePage extends StatelessWidget {
           children: [
             // ─── 渐变顶栏 + 头像区 ────────────────────────
             _buildHeroSection(
-              nickname: mockNickname,
-              grade: mockGrade,
-              eliminatedCount: mockEliminatedCount,
-              totalCount: mockTotalCount,
-              streakDays: mockStreakDays,
+              nickname: nickname,
+              grade: grade,
+              eliminatedCount: eliminatedCount,
+              totalCount: totalCount,
+              streakDays: streakDays,
             ),
 
             SizedBox(height: AppSpacing.lg),
@@ -423,19 +433,32 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  void _handleLogout(BuildContext context) {
-    EHConfirmDialog.show(
+  /// 将年级代码转为中文标签
+  /// "31"-"34" → 小学三~六年级, "71"-"73" → 初一~初三
+  String _gradeCodeToLabel(String code) {
+    const map = {
+      '31': '三年级', '32': '四年级', '33': '五年级', '34': '六年级',
+      '71': '初一', '72': '初二', '73': '初三',
+    };
+    return map[code] ?? '';
+  }
+
+  void _handleLogout(BuildContext context) async {
+    final confirmed = await EHConfirmDialog.show(
       context,
       title: '确认退出登录？',
       content: '退出后需要重新登录才能使用',
       confirmText: '退出',
       cancelText: '取消',
       isDestructive: true,
-    ).then((confirmed) {
-      if (confirmed == true && context.mounted) {
-        context.go(Routes.login);
-      }
-    });
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    // 1. 清 ApiClient 持久化的 access_token / refresh_token
+    await context.read<ApiClient>().clearTokens();
+    // 2. 清 AuthBloc 本地存储并 emit Unauthenticated
+    //    → app_router 的 redirect 会自动跳到 /login
+    context.read<AuthBloc>().add(Logout());
   }
 }
 

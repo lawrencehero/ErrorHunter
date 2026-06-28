@@ -30,24 +30,40 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
     LoadQuestions event,
     Emitter<QuestionState> emit,
   ) async {
-    if (event.refresh) {
+    // 仅在首次加载（尚未加载过）时显示骨架屏；tab/筛选切换时保留旧列表，
+    // 避免滑动切换中闪现骨架屏
+    if (event.refresh && state is! QuestionListLoaded) {
       emit(const QuestionListLoading());
     }
 
-    final questions = await _questionRepository.getQuestions(
-      category: event.category,
-      status: event.status,
-      knowledgePointId: event.knowledgePointId,
-      page: event.page,
-    );
+    try {
+      final questions = await _questionRepository.getQuestions(
+        category: event.category,
+        status: event.status,
+        knowledgePointId: event.knowledgePointId,
+        page: event.page,
+      );
 
-    emit(QuestionListLoaded(
-      questions: questions,
-      hasMore: event.page < 3,
-      currentPage: event.page,
-      filterStatus: event.status,
-      filterCategory: event.category,
-    ));
+      // 非刷新（加载更多）时追加到现有列表；刷新时替换
+      final previous = (state is QuestionListLoaded && !event.refresh)
+          ? (state as QuestionListLoaded).questions
+          : const <QuestionModel>[];
+      final all = event.refresh ? questions : [...previous, ...questions];
+
+      // hasMore：本页满页（>= pageSize）才认为可能还有更多
+      final hasMore = questions.length >= event.pageSize;
+
+      emit(QuestionListLoaded(
+        questions: all,
+        hasMore: hasMore,
+        currentPage: event.page,
+        filterStatus: event.status,
+        filterCategory: event.category,
+        filterKnowledgePoint: event.knowledgePointId,
+      ));
+    } catch (e) {
+      emit(QuestionError(e.toString()));
+    }
   }
 
   Future<void> _onSearchQuestions(
@@ -110,24 +126,28 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
   ) async {
     emit(const QuestionAdding());
 
-    final newQuestion = QuestionModel(
-      id: 'q${DateTime.now().millisecondsSinceEpoch}',
-      imageUrl: event.imageUrl,
-      ocrText: event.ocrText,
-      myAnswer: event.myAnswer,
-      correctAnswer: event.correctAnswer,
-      errorCategory: event.errorCategory,
-      subCategories: event.subCategories,
-      status: QuestionStatus.notStarted,
-      knowledgePoints: event.knowledgePoints,
-      customTags: event.customTags,
-      currentReviewRound: 0,
-      totalReviewRounds: 5,
-      createdAt: DateTime.now(),
-    );
+    try {
+      final newQuestion = QuestionModel(
+        id: 'q${DateTime.now().millisecondsSinceEpoch}',
+        imageUrl: event.imageUrl,
+        ocrText: event.ocrText,
+        myAnswer: event.myAnswer,
+        correctAnswer: event.correctAnswer,
+        errorCategory: event.errorCategory,
+        subCategories: event.subCategories,
+        status: QuestionStatus.notStarted,
+        knowledgePoints: event.knowledgePoints,
+        customTags: event.customTags,
+        currentReviewRound: 0,
+        totalReviewRounds: 5,
+        createdAt: DateTime.now(),
+      );
 
-    final created = await _questionRepository.addQuestion(newQuestion);
-    emit(QuestionAdded(created));
+      final created = await _questionRepository.addQuestion(newQuestion);
+      emit(QuestionAdded(created));
+    } catch (e) {
+      emit(QuestionAddFailed(e.toString()));
+    }
   }
 
   Future<void> _onUpdateQuestion(
@@ -156,7 +176,21 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
   ) async {
     emit(const OcrProcessing());
 
-    final result = await _questionRepository.ocrImage(event.imagePath);
-    emit(OcrCompleted(result));
+    try {
+      final result = await _questionRepository.ocrImage(event.imagePath);
+      if (result.text.isNotEmpty) {
+        emit(OcrCompleted(
+          text: result.text,
+          imageUrl: result.imageUrl,
+          figures: result.figures,
+        ));
+      } else {
+        // OCR 返回空字符串视为识别失败（不阻塞用户保存，但提示重试）
+        emit(const OcrFailed('未识别到文字内容，请检查图片清晰度后重试'));
+      }
+    } catch (e) {
+      // 修复 Bug #3：捕获异常 emit OcrFailed，UI 才能进入失败状态而不是永远卡在 loading
+      emit(OcrFailed(e.toString()));
+    }
   }
 }

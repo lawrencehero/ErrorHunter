@@ -9,6 +9,7 @@ import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
 import '../../../theme/animations.dart';
+import '../../../theme/theme_manager.dart';
 
 class CheckinStreakBar extends StatefulWidget {
   const CheckinStreakBar({super.key, required this.streakDays});
@@ -43,20 +44,28 @@ class _CheckinStreakBarState extends State<CheckinStreakBar>
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    // 玻璃下强调色提亮为暖橙红（与游戏化暖渐变呼应，避免在玻璃上叠 chunky 底影）
+    final accent = isGlass ? const Color(0xFFFFAB91) : AppColors.brandSecondary;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
+        // 玻璃下保留暖色渐变作为强调（叠在玻璃背景上仍可读），但去掉 chunky 底影
         gradient: AppGradients.warm,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.brandSecondaryDark,
-            offset: const Offset(0, 4),
-            blurRadius: 0,
-            spreadRadius: 0,
-          ),
-        ],
+        border: isGlass ? Border.all(color: Colors.white.withOpacity(0.25), width: 1) : null,
+        boxShadow: isGlass
+            ? null
+            : [
+                BoxShadow(
+                  color: AppColors.brandSecondaryDark,
+                  offset: const Offset(0, 4),
+                  blurRadius: 0,
+                  spreadRadius: 0,
+                ),
+              ],
       ),
       child: Row(
         children: [
@@ -66,7 +75,7 @@ class _CheckinStreakBarState extends State<CheckinStreakBar>
             builder: (context, child) {
               return Transform.scale(scale: _pulseAnimation.value, child: child);
             },
-            child: const Text('🔥', style: TextStyle(fontSize: 32)),
+            child: Text('🔥', style: TextStyle(fontSize: isGlass ? 28.0 : 32.0)),
           ),
           const SizedBox(width: 14),
           // 文字
@@ -88,8 +97,8 @@ class _CheckinStreakBarState extends State<CheckinStreakBar>
                   children: [
                     Text(
                       '${widget.streakDays}',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: isGlass ? accent : Colors.white,
                         fontSize: 36,
                         fontWeight: FontWeight.w800,
                         height: 1.0,
@@ -118,7 +127,7 @@ class _CheckinStreakBarState extends State<CheckinStreakBar>
                     widthFactor: 0.65,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: isGlass ? accent : Colors.white,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),

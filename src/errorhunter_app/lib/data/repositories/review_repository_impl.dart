@@ -21,4 +21,18 @@ class ReviewRepositoryImpl implements ReviewRepository {
 
   @override
   Future<int> getStreakDays() => _dataSource.getStreakDays();
+
+  @override
+  Future<void> submitReviewResult({
+    required String questionId,
+    required String selfRating,
+    int? reviewDurationSec,
+    bool isReviveCheck = false,
+  }) =>
+      _dataSource.submitReviewResult(
+        questionId: questionId,
+        selfRating: selfRating,
+        reviewDurationSec: reviewDurationSec,
+        isReviveCheck: isReviveCheck,
+      );
 }

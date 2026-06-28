@@ -14,6 +14,8 @@ import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
 import '../../../widgets/common/dialogs/confirm_dialog.dart';
 import '../../../widgets/common/dialogs/snackbar.dart';
+import '../../report/bloc/report_bloc.dart';
+import '../../report/bloc/report_event.dart';
 import '../bloc/review_bloc.dart';
 import '../bloc/review_event.dart';
 import '../bloc/review_state.dart';
@@ -183,6 +185,8 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       icon: Icons.exit_to_app,
     );
     if (confirmed == true && mounted) {
+      // 中途退出时，已提交的题也要反映到首页 dashboard，刷新之。
+      context.read<ReportBloc>().add(const LoadDashboard());
       context.go(Routes.home);
     }
   }

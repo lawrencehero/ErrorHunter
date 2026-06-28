@@ -2,14 +2,23 @@
 /// 来源：界面与交互设计文档 V1.0 §2.1-2.2
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../di/injection.dart';
+import '../features/auth/bloc/auth_bloc.dart';
+import '../features/auth/bloc/auth_state.dart';
 import '../features/auth/pages/home_page.dart';
+import '../features/auth/pages/login_page.dart';
 import '../features/auth/pages/onboarding_page.dart';
 import '../features/auth/pages/register_page.dart';
 import '../features/auth/pages/splash_screen.dart';
+import '../features/auth/pages/user_agreement_page.dart';
+import '../features/auth/pages/privacy_policy_page.dart';
 import '../features/export/pages/pdf_export_page.dart';
 import '../features/profile/pages/deactivate_page.dart';
 import '../features/profile/pages/profile_page.dart';
@@ -18,15 +27,25 @@ import '../features/profile/pages/storage_management_page.dart';
 import '../features/question/pages/add_question_page.dart';
 import '../features/question/pages/question_detail_page.dart';
 import '../features/question/pages/question_list_page.dart';
+import '../features/question/bloc/question_bloc.dart';
 import '../features/question/pages/recycle_bin_page.dart';
 import '../features/settings/pages/theme_selector_page.dart';
 import '../widgets/common/bottom_nav_bar.dart';
 import '../features/report/pages/weekly_report_detail_page.dart';
 import '../features/report/pages/weekly_report_list_page.dart';
+import '../features/report/bloc/report_bloc.dart';
 import '../features/review/models/review_report_model.dart';
 import '../features/review/pages/eliminate_animation_page.dart';
 import '../features/review/pages/review_page.dart';
 import '../features/review/pages/review_report_page.dart';
+import '../widgets/common/app_background.dart';
+
+/// 包装全屏推入页：为其附加 AppBackground 渐变/纯色背景。
+///
+/// 顶层 GoRoute 默认走 MaterialPageRoute（Zoom 转场），其进入页首帧会暴露
+/// 底层白底，玻璃主题下表现为"先闪白底再出渐变"。让推入页自带 AppBackground
+/// 使路由在转场期间即为不透明主题背景，从根因上消除白闪。
+Widget _withBackground(Widget page) => AppBackground(child: page);
 
 /// 路由路径常量
 class Routes {
@@ -36,6 +55,7 @@ class Routes {
   static const String splash = '/splash';
   static const String onboarding = '/onboarding';
   static const String login = '/login';
+  static const String register = '/register';
 
   // ─── Main Tabs ───────────────────────────────────────────
   static const String home = '/home';
@@ -65,12 +85,52 @@ class Routes {
 
   // ─── Account ─────────────────────────────────────────────
   static const String deactivate = '/account/deactivate';
+
+  // ─── Legal ──────────────────────────────────────────────────
+  static const String userAgreement = '/legal/user-agreement';
+  static const String privacyPolicy = '/legal/privacy-policy';
 }
+
+/// 全局路由观察者：供页面用 RouteAware.didPopNext 监听"上层路由 pop 回到自己"
+/// （如周报详情返回列表时，列表页自动重新加载数据，避免共用 Bloc 状态错位空白）。
+final RouteObserver<ModalRoute<void>> routeObserver =
+    RouteObserver<ModalRoute<void>>();
 
 /// 路由构建器
 final GoRouter appRouter = GoRouter(
   initialLocation: Routes.splash,
   debugLogDiagnostics: true,
+  observers: [routeObserver],
+  // ✅ 监听 AuthBloc state 变化，每次变化重新评估 redirect
+  refreshListenable: GoRouterRefreshStream(sl<AuthBloc>().stream),
+  redirect: (context, state) {
+    final authState = sl<AuthBloc>().state;
+    final loc = state.matchedLocation;
+
+    // AuthLoading / AuthInitial：splash 期间正在验证，不要重定向
+    if (authState is AuthLoading || authState is AuthInitial) {
+      return null;
+    }
+
+    // 当前处于 auth 流程的页面（不需要强制重定向）
+    final isAtAuthFlow = loc == Routes.splash
+        || loc == Routes.onboarding
+        || loc == Routes.login
+        || loc == Routes.register;
+
+    // 已登录但停留在 auth 流程 → 跳到首页
+    if (authState is Authenticated &&
+        (loc == Routes.login || loc == Routes.register || loc == Routes.onboarding)) {
+      return Routes.home;
+    }
+
+    // 未登录但访问受保护页面 → 跳到登录页
+    if (authState is Unauthenticated && !isAtAuthFlow) {
+      return Routes.login;
+    }
+
+    return null;
+  },
   routes: [
     // ─── Auth Flow ──────────────────────────────────────
     GoRoute(
@@ -83,6 +143,10 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: Routes.login,
+      builder: (context, state) => const LoginPage(),
+    ),
+    GoRoute(
+      path: Routes.register,
       builder: (context, state) => const RegisterPage(),
     ),
 
@@ -92,27 +156,34 @@ final GoRouter appRouter = GoRouter(
       routes: [
         GoRoute(
           path: Routes.home,
-          builder: (context, state) => const HomePage(),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: HomePage()),
         ),
         GoRoute(
           path: Routes.questions,
-          builder: (context, state) => const QuestionListPage(),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: QuestionListPage()),
           routes: [
             GoRoute(
               path: ':id',
-              builder: (context, state) => QuestionDetailPage(
-                questionId: state.pathParameters['id']!,
-              ),
+              builder: (context, state) => _withBackground(BlocProvider<QuestionBloc>(
+                create: (_) => sl<QuestionBloc>(),
+                child: QuestionDetailPage(
+                  questionId: state.pathParameters['id']!,
+                ),
+              )),
             ),
           ],
         ),
         GoRoute(
           path: Routes.weeklyReports,
-          builder: (context, state) => const WeeklyReportListPage(),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: WeeklyReportListPage()),
         ),
         GoRoute(
           path: Routes.profile,
-          builder: (context, state) => const ProfilePage(),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ProfilePage()),
         ),
       ],
     ),
@@ -120,66 +191,85 @@ final GoRouter appRouter = GoRouter(
     // ─── Full-screen Pages (outside ShellRoute, no bottom nav) ──
     GoRoute(
       path: Routes.addQuestion,
-      builder: (context, state) => const AddQuestionPage(),
+      builder: (context, state) => _withBackground(const AddQuestionPage()),
     ),
 
     // ─── Full-screen Pages ──────────────────────────────
     GoRoute(
       path: Routes.review,
-      builder: (context, state) => const ReviewPage(),
+      builder: (context, state) => _withBackground(const ReviewPage()),
     ),
     GoRoute(
       path: Routes.reviewReport,
       builder: (context, state) {
         final report = state.extra as ReviewReportModel?;
-        return ReviewReportPage(report: report ?? ReviewReportModel.empty());
+        return _withBackground(
+            ReviewReportPage(report: report ?? ReviewReportModel.empty()));
       },
     ),
     GoRoute(
       path: Routes.eliminateAnimation,
       builder: (context, state) {
         final args = state.extra as Map<String, dynamic>?;
-        return EliminateAnimationPage(
+        return _withBackground(EliminateAnimationPage(
           totalEliminated: args?['totalEliminated'] as int? ?? 1,
           isFirstInSession: args?['isFirstInSession'] as bool? ?? true,
-        );
+        ));
       },
     ),
 
     // ─── Reports Detail ─────────────────────────────────
+    // 详情页使用独立的局部 ReportBloc（BlocProvider 就地创建），避免与列表/首页
+    // 共用的全局 ReportBloc 相互污染：详情 LoadWeeklyReportDetail 把状态置为
+    // WeeklyReportDetailLoaded，若走全局 bloc，返回列表时列表页 BlocBuilder 不认
+    // 该状态会卡在兜底转圈。这里隔离后，全局 bloc 仍保持 WeeklyReportsLoaded，
+    // 返回列表直接显示，无需依赖 didPopNext 重载。
     GoRoute(
       path: Routes.weeklyReportDetail,
-      builder: (context, state) => WeeklyReportDetailPage(
-        reportId: state.pathParameters['id']!,
-      ),
+      builder: (context, state) => _withBackground(BlocProvider<ReportBloc>(
+        create: (_) => sl<ReportBloc>(),
+        child: WeeklyReportDetailPage(
+          reportId: state.pathParameters['id']!,
+        ),
+      )),
     ),
 
     // ─── Settings ───────────────────────────────────────
     GoRoute(
       path: Routes.settingsReminder,
-      builder: (context, state) => const ReminderSettingsPage(),
+      builder: (context, state) => _withBackground(const ReminderSettingsPage()),
     ),
     GoRoute(
       path: Routes.settingsStorage,
-      builder: (context, state) => const StorageManagementPage(),
+      builder: (context, state) => _withBackground(const StorageManagementPage()),
     ),
     GoRoute(
       path: Routes.settingsTheme,
-      builder: (context, state) => const ThemeSelectorPage(),
+      builder: (context, state) => _withBackground(const ThemeSelectorPage()),
     ),
     GoRoute(
       path: Routes.recycleBin,
-      builder: (context, state) => const RecycleBinPage(),
+      builder: (context, state) => _withBackground(const RecycleBinPage()),
     ),
     GoRoute(
       path: Routes.pdfExport,
-      builder: (context, state) => const PdfExportPage(),
+      builder: (context, state) => _withBackground(const PdfExportPage()),
     ),
 
     // ─── Account ────────────────────────────────────────
     GoRoute(
       path: Routes.deactivate,
-      builder: (context, state) => const DeactivatePage(),
+      builder: (context, state) => _withBackground(const DeactivatePage()),
+    ),
+
+    // ─── Legal ──────────────────────────────────────────
+    GoRoute(
+      path: Routes.userAgreement,
+      builder: (context, state) => _withBackground(const UserAgreementPage()),
+    ),
+    GoRoute(
+      path: Routes.privacyPolicy,
+      builder: (context, state) => _withBackground(const PrivacyPolicyPage()),
     ),
   ],
 );
@@ -259,5 +349,23 @@ class _MainShell extends StatelessWidget {
       case 3:
         context.go(Routes.profile);
     }
+  }
+}
+
+/// 把 AuthBloc.state stream 转成 Listenable，触发 GoRouter 重新评估 redirect
+class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+    _subscription = stream.asBroadcastStream().listen(
+      (_) => notifyListeners(),
+    );
+  }
+
+  late final StreamSubscription<dynamic> _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
   }
 }

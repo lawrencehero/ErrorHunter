@@ -27,19 +27,32 @@ class ReviewRemoteDataSource {
     );
 
     final data = response.data?['data'] as Map<String, dynamic>?;
-    final items = data?['items'] as List<dynamic>? ?? [];
 
-    return items
-        .map((item) =>
-            QuestionModel.fromJson(item as Map<String, dynamic>))
-        .toList();
+    // 后端返回 review_items（普通复习题）+ revive_items（复活检测题），
+    // 两者均为完整 Question 形状，合并后交给 ReviewBloc。
+    // 复活检测题 status=MASTERED，ReviewBloc._isReviveCheck 据此识别。
+    final reviewItems = data?['review_items'] as List<dynamic>? ?? [];
+    final reviveItems = data?['revive_items'] as List<dynamic>? ?? [];
+
+    final all = <QuestionModel>[];
+    for (final item in reviewItems) {
+      all.add(QuestionModel.fromJson(item as Map<String, dynamic>));
+    }
+    for (final item in reviveItems) {
+      all.add(QuestionModel.fromJson(item as Map<String, dynamic>));
+    }
+    return all;
   }
 
   /// 提交复习结果
+  ///
+  /// [selfRating] 为已映射到后端的字符串（MASTERED/PARTIAL/FAILED），
+  /// 映射逻辑由调用方（ReviewBloc._mapToBackendRating）负责。
   Future<void> submitReviewResult({
     required String questionId,
     required String selfRating,
     int? reviewDurationSec,
+    bool isReviveCheck = false,
   }) async {
     await _client.post(
       ApiEndpoints.reviewResult,
@@ -48,6 +61,7 @@ class ReviewRemoteDataSource {
         'self_rating': selfRating,
         if (reviewDurationSec != null)
           'review_duration_sec': reviewDurationSec,
+        'is_revive_check': isReviveCheck,
       },
     );
   }

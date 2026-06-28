@@ -3,6 +3,7 @@
 library;
 
 import '../../features/question/models/question_model.dart';
+import '../../features/question/models/ocr_result.dart';
 
 /// 错题仓库抽象
 abstract class QuestionRepository {
@@ -30,5 +31,5 @@ abstract class QuestionRepository {
   Future<void> deleteQuestion(String id);
 
   /// OCR 识别图片
-  Future<String> ocrImage(String imagePath);
+  Future<OcrResult> ocrImage(String imagePath);
 }

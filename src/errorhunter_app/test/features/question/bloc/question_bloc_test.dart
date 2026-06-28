@@ -5,11 +5,13 @@ import "package:errorhunter_app/features/question/bloc/question_event.dart";
 import "package:errorhunter_app/features/question/bloc/question_state.dart";
 import "package:errorhunter_app/features/question/models/question_model.dart";
 import "package:errorhunter_app/features/question/models/knowledge_point_model.dart";
+import "package:errorhunter_app/features/question/models/ocr_result.dart";
 import "package:errorhunter_app/domain/repositories/question_repository.dart";
+import "package:errorhunter_app/utils/image_url_helper.dart";
 
 class MockQuestionRepository implements QuestionRepository {
   List<QuestionModel> mockQuestions = [];
-  String ocrResult = "OCR text result";
+  OcrResult ocrResult = const OcrResult(text: "OCR text result");
 
   @override
   Future<List<QuestionModel>> getQuestions({
@@ -61,7 +63,7 @@ class MockQuestionRepository implements QuestionRepository {
   }
 
   @override
-  Future<String> ocrImage(String imagePath) async => ocrResult;
+  Future<OcrResult> ocrImage(String imagePath) async => ocrResult;
 }
 
 QuestionModel createMockQuestion({
@@ -276,7 +278,8 @@ void main() {
       final json = original.toJson();
       final restored = QuestionModel.fromJson(json);
       expect(restored.id, original.id);
-      expect(restored.imageUrl, original.imageUrl);
+      // imageUrl 经 fromJson 会归一化 host（设计如此），roundtrip 后为归一化结果
+      expect(restored.imageUrl, normalizeImageUrl(original.imageUrl));
       expect(restored.errorCategory, original.errorCategory);
       expect(restored.status, original.status);
     });

@@ -6,7 +6,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/theme_manager.dart';
-import '../../../theme/app_theme_mode.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
@@ -26,11 +25,32 @@ class WeeklyReportListPage extends StatefulWidget {
   State<WeeklyReportListPage> createState() => _WeeklyReportListPageState();
 }
 
-class _WeeklyReportListPageState extends State<WeeklyReportListPage> {
+class _WeeklyReportListPageState extends State<WeeklyReportListPage>
+    with RouteAware {
   @override
   void initState() {
     super.initState();
     context.read<ReportBloc>().add(const LoadWeeklyReports());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 订阅路由观察者：上层路由（周报详情）pop 回本页时触发 didPopNext
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void didPopNext() {
+    // 从详情页返回时，列表与详情共用 ReportBloc，详情把状态置成了
+    // WeeklyReportDetailLoaded；这里重新拉取列表，避免列表页无匹配分支空白。
+    context.read<ReportBloc>().add(const LoadWeeklyReports());
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
   }
 
   @override
@@ -69,9 +89,30 @@ class _WeeklyReportListPageState extends State<WeeklyReportListPage> {
             );
           }
           if (state is WeeklyReportsLoaded) {
+            if (state.reports.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.assessment_outlined,
+                        size: 64, color: tc.tertiary),
+                    SizedBox(height: AppSpacing.sm),
+                    Text('暂无周报记录',
+                        style: AppTypography.primary.body
+                            .copyWith(color: tc.secondary)),
+                    SizedBox(height: AppSpacing.xs),
+                    Text('坚持录入错题，周报将每周自动生成',
+                        style: AppTypography.primary.caption
+                            .copyWith(color: tc.tertiary)),
+                  ],
+                ),
+              );
+            }
             return _buildList(state.reports);
           }
-          return const SizedBox.shrink();
+          // 兜底：列表页不应处于 WeeklyReportDetailLoaded / DashboardLoaded /
+          // ReportInitial 等状态。出现时显示 loading 而非空白，避免误判。
+          return const Center(child: EHLoadingSpinner());
         },
       ),
     );
@@ -101,7 +142,7 @@ class _ReportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.textColors;
-    final isGlass = context.themeExt.headerStyle == HeaderStyle.transparent;
+    final isGlass = context.themeExt.isDarkBackground;
     final dateRange =
         '${report.startDate.month}/${report.startDate.day} - ${report.endDate.month}/${report.endDate.day}';
 
@@ -144,8 +185,13 @@ class _ReportCard extends StatelessWidget {
               vertical: AppSpacing.sm,
             ),
             decoration: BoxDecoration(
-              color: isGlass ? Colors.white.withOpacity(0.08) : AppColors.background,
+              color: isGlass
+                  ? Colors.white.withOpacity(0.12)
+                  : AppColors.background,
               borderRadius: AppRadius.radiusMd,
+              border: isGlass
+                  ? Border.all(color: Colors.white.withOpacity(0.25))
+                  : null,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -177,7 +223,7 @@ class _ReportCard extends StatelessWidget {
             child: Text(
               '查看详情 →',
               style: AppTypography.primary.caption.copyWith(
-                color: isGlass ? const Color(0xFF90CAF9) : AppColors.brandPrimary,
+                color: isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),

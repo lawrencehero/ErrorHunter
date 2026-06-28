@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/divider.dart';
 
 /// 设置项数据
@@ -37,6 +38,15 @@ class SettingsListSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    // 玻璃拟态：白色 surface 底在深色渐变上突兀且发亮，改半透明白；
+    // danger 深红对比度不足，提亮为浅红。
+    final dangerColor =
+        isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
+    final dividerColor = isGlass
+        ? Colors.white.withOpacity(0.15)
+        : AppColors.border;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -51,7 +61,7 @@ class SettingsListSection extends StatelessWidget {
             child: Text(
               title!,
               style: AppTypography.primary.caption.copyWith(
-                color: AppColors.textTertiary,
+                color: tc.tertiary,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -59,8 +69,11 @@ class SettingsListSection extends StatelessWidget {
         ],
         Container(
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: isGlass ? Colors.white.withOpacity(0.12) : AppColors.surface,
             borderRadius: BorderRadius.circular(12),
+            border: isGlass
+                ? Border.all(color: Colors.white.withOpacity(0.25), width: 1)
+                : null,
           ),
           margin: EdgeInsets.symmetric(horizontal: AppSpacing.base),
           clipBehavior: Clip.antiAlias,
@@ -77,21 +90,21 @@ class SettingsListSection extends StatelessWidget {
                       item.icon,
                       size: 22,
                       color: item.isDestructive
-                          ? AppColors.danger
-                          : AppColors.textSecondary,
+                          ? dangerColor
+                          : tc.secondary,
                     ),
                     title: Text(
                       item.label,
                       style: AppTypography.primary.body.copyWith(
                         color: item.isDestructive
-                            ? AppColors.danger
-                            : AppColors.textPrimary,
+                            ? dangerColor
+                            : tc.primary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     trailing: item.onTap != null
                         ? Icon(Icons.chevron_right_rounded,
-                            size: 20, color: AppColors.textTertiary)
+                            size: 20, color: tc.tertiary)
                         : null,
                     onTap: item.onTap,
                     contentPadding: EdgeInsets.symmetric(
@@ -101,7 +114,7 @@ class SettingsListSection extends StatelessWidget {
                     minLeadingWidth: 32,
                   ),
                   if (!isLast && item.showDivider)
-                    EHDivider(indent: 56),
+                    EHDivider(indent: 56, color: dividerColor),
                 ],
               );
             }).toList(),

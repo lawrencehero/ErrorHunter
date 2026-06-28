@@ -47,19 +47,18 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
     final tc = context.textColors;
     return BlocBuilder<ReportBloc, ReportState>(
       builder: (context, state) {
+        Widget child;
         if (state is ReportLoading) {
-          return Scaffold(
-            backgroundColor: AppColors.background,
+          child = Scaffold(
+            backgroundColor: Colors.transparent,
             appBar: _buildAppBar(null),
             body: const Center(child: EHLoadingSpinner()),
           );
-        }
-        if (state is WeeklyReportDetailLoaded) {
-          return _buildContent(state.report);
-        }
-        if (state is ReportError) {
-          return Scaffold(
-            backgroundColor: AppColors.background,
+        } else if (state is WeeklyReportDetailLoaded) {
+          child = _buildContent(state.report);
+        } else if (state is ReportError) {
+          child = Scaffold(
+            backgroundColor: Colors.transparent,
             appBar: _buildAppBar(null),
             body: Center(
               child: Text(state.message,
@@ -67,12 +66,16 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
                       .copyWith(color: tc.secondary)),
             ),
           );
+        } else {
+          child = Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: _buildAppBar(null),
+            body: const SizedBox.shrink(),
+          );
         }
-        return Scaffold(
-          backgroundColor: AppColors.background,
-          appBar: _buildAppBar(null),
-          body: const SizedBox.shrink(),
-        );
+        // 列表页用 RouteAware.didPopNext 在被返回时自动重载，
+        // 详情页无需在此倒腾返回按钮，直接返回即可。
+        return child;
       },
     );
   }
@@ -107,11 +110,15 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
 
   Widget _buildContent(WeeklyReportModel report) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    final dangerAccent =
+        isGlass ? const Color(0xFFEF9A9A) : AppColors.danger;
     final dateRange =
         '${report.summary.startDate.month}/${report.summary.startDate.day} - ${report.summary.endDate.month}/${report.summary.endDate.day}';
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: _buildAppBar(report),
       body: SingleChildScrollView(
         padding: AppSpacing.pagePadding.copyWith(bottom: AppSpacing.xxxl),
@@ -127,13 +134,17 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
                   vertical: AppSpacing.xs + 2,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.brandPrimary.withOpacity(0.08),
+                  color: (isGlass ? Colors.white : accent)
+                      .withOpacity(isGlass ? 0.12 : 0.08),
                   borderRadius: AppRadius.radiusFull,
+                  border: isGlass
+                      ? Border.all(color: Colors.white.withOpacity(0.25))
+                      : null,
                 ),
                 child: Text(
                   '📅 $dateRange',
                   style: AppTypography.primary.caption.copyWith(
-                    color: AppColors.brandPrimary,
+                    color: accent,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -198,7 +209,7 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
                           Text(
                             '${kp.errorCount}道错题',
                             style: AppTypography.primary.caption.copyWith(
-                              color: AppColors.danger,
+                              color: dangerAccent,
                               fontWeight: FontWeight.w500,
                             ),
                           ),

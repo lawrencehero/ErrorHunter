@@ -1,0 +1,116 @@
+# 错题猎手 - 知识点配置（数学）
+#
+# 这是知识点的唯一可编辑源头。后端启动时会幂等种子到数据库 knowledge_points 表
+# （grade/domain/is_recommended/subject 编码进 keywords JSONB 列）。
+# 修改本文件后重启后端即可生效。
+#
+# 注意：seeder 按 (name, grade, version) 去重。重命名一个知识点会新增一行并遗留旧行
+# （旧错题仍关联到旧行）；如需真正重命名请手工处理数据库。
+#
+# grade: 31-34 小学三至六年级, 71-73 初中七至九年级
+# domain: num 数与代数 / geo 图形与几何 / stat 统计与概率
+# is_recommended: 该年级高频出错知识点（选择器中带 ✨）
+
+version: "2026A"
+subject: "数学"
+points:
+  # ─── 三年级（31）─────────────────────────────────────────
+  - { name: "万以内加减法", grade: "31", domain: "num", is_recommended: true, sort_order: 1 }
+  - { name: "多位数乘一位数", grade: "31", domain: "num", is_recommended: true, sort_order: 2 }
+  - { name: "有余数的除法", grade: "31", domain: "num", is_recommended: true, sort_order: 3 }
+  - { name: "时、分、秒", grade: "31", domain: "num", is_recommended: false, sort_order: 4 }
+  - { name: "测量（长度/质量单位）", grade: "31", domain: "num", is_recommended: false, sort_order: 5 }
+  - { name: "分数初步认识", grade: "31", domain: "num", is_recommended: true, sort_order: 6 }
+  - { name: "两位数乘两位数", grade: "31", domain: "num", is_recommended: false, sort_order: 7 }
+  - { name: "小数初步认识", grade: "31", domain: "num", is_recommended: true, sort_order: 8 }
+  - { name: "长方形与正方形", grade: "31", domain: "geo", is_recommended: false, sort_order: 9 }
+  - { name: "周长", grade: "31", domain: "geo", is_recommended: true, sort_order: 10 }
+  - { name: "位置与方向", grade: "31", domain: "geo", is_recommended: false, sort_order: 11 }
+  - { name: "面积的认识与单位", grade: "31", domain: "geo", is_recommended: false, sort_order: 12 }
+  - { name: "简单数据分析（条形图）", grade: "31", domain: "stat", is_recommended: false, sort_order: 13 }
+
+  # ─── 四年级（32）─────────────────────────────────────────
+  - { name: "大数的认识", grade: "32", domain: "num", is_recommended: false, sort_order: 1 }
+  - { name: "三位数乘两位数", grade: "32", domain: "num", is_recommended: true, sort_order: 2 }
+  - { name: "除数是两位数的除法", grade: "32", domain: "num", is_recommended: true, sort_order: 3 }
+  - { name: "四则混合运算与运算律", grade: "32", domain: "num", is_recommended: true, sort_order: 4 }
+  - { name: "小数的意义与性质", grade: "32", domain: "num", is_recommended: true, sort_order: 5 }
+  - { name: "小数加减法", grade: "32", domain: "num", is_recommended: false, sort_order: 6 }
+  - { name: "角的度量", grade: "32", domain: "geo", is_recommended: true, sort_order: 7 }
+  - { name: "平行四边形与梯形", grade: "32", domain: "geo", is_recommended: false, sort_order: 8 }
+  - { name: "三角形", grade: "32", domain: "geo", is_recommended: true, sort_order: 9 }
+  - { name: "平行与垂直", grade: "32", domain: "geo", is_recommended: false, sort_order: 10 }
+  - { name: "条形统计图", grade: "32", domain: "stat", is_recommended: false, sort_order: 11 }
+  - { name: "平均数", grade: "32", domain: "stat", is_recommended: false, sort_order: 12 }
+
+  # ─── 五年级（33）─────────────────────────────────────────
+  - { name: "小数乘法", grade: "33", domain: "num", is_recommended: true, sort_order: 1 }
+  - { name: "小数除法", grade: "33", domain: "num", is_recommended: true, sort_order: 2 }
+  - { name: "简易方程", grade: "33", domain: "num", is_recommended: true, sort_order: 3 }
+  - { name: "因数与倍数", grade: "33", domain: "num", is_recommended: true, sort_order: 4 }
+  - { name: "分数的意义与性质", grade: "33", domain: "num", is_recommended: true, sort_order: 5 }
+  - { name: "分数加减法", grade: "33", domain: "num", is_recommended: false, sort_order: 6 }
+  - { name: "多边形面积", grade: "33", domain: "geo", is_recommended: true, sort_order: 7 }
+  - { name: "长方体与正方体", grade: "33", domain: "geo", is_recommended: true, sort_order: 8 }
+  - { name: "图形的变换（平移/旋转/对称）", grade: "33", domain: "geo", is_recommended: false, sort_order: 9 }
+  - { name: "观察物体", grade: "33", domain: "geo", is_recommended: false, sort_order: 10 }
+  - { name: "折线统计图", grade: "33", domain: "stat", is_recommended: false, sort_order: 11 }
+  - { name: "可能性（概率初步）", grade: "33", domain: "stat", is_recommended: false, sort_order: 12 }
+
+  # ─── 六年级（34）─────────────────────────────────────────
+  - { name: "分数乘法", grade: "34", domain: "num", is_recommended: true, sort_order: 1 }
+  - { name: "分数除法", grade: "34", domain: "num", is_recommended: true, sort_order: 2 }
+  - { name: "比", grade: "34", domain: "num", is_recommended: true, sort_order: 3 }
+  - { name: "百分数", grade: "34", domain: "num", is_recommended: true, sort_order: 4 }
+  - { name: "比例", grade: "34", domain: "num", is_recommended: true, sort_order: 5 }
+  - { name: "正比例与反比例", grade: "34", domain: "num", is_recommended: false, sort_order: 6 }
+  - { name: "负数", grade: "34", domain: "num", is_recommended: false, sort_order: 7 }
+  - { name: "圆", grade: "34", domain: "geo", is_recommended: true, sort_order: 8 }
+  - { name: "圆柱与圆锥", grade: "34", domain: "geo", is_recommended: true, sort_order: 9 }
+  - { name: "图形的放大与缩小", grade: "34", domain: "geo", is_recommended: false, sort_order: 10 }
+  - { name: "确定位置", grade: "34", domain: "geo", is_recommended: false, sort_order: 11 }
+  - { name: "扇形统计图", grade: "34", domain: "stat", is_recommended: false, sort_order: 12 }
+
+  # ─── 七年级（71）─────────────────────────────────────────
+  - { name: "有理数", grade: "71", domain: "num", is_recommended: true, sort_order: 1 }
+  - { name: "有理数的运算", grade: "71", domain: "num", is_recommended: true, sort_order: 2 }
+  - { name: "整式的加减", grade: "71", domain: "num", is_recommended: true, sort_order: 3 }
+  - { name: "一元一次方程", grade: "71", domain: "num", is_recommended: true, sort_order: 4 }
+  - { name: "一元一次方程应用题", grade: "71", domain: "num", is_recommended: true, sort_order: 5 }
+  - { name: "二元一次方程组", grade: "71", domain: "num", is_recommended: true, sort_order: 6 }
+  - { name: "一元一次不等式（组）", grade: "71", domain: "num", is_recommended: false, sort_order: 7 }
+  - { name: "实数", grade: "71", domain: "num", is_recommended: false, sort_order: 8 }
+  - { name: "几何图形初步", grade: "71", domain: "geo", is_recommended: false, sort_order: 9 }
+  - { name: "相交线与平行线", grade: "71", domain: "geo", is_recommended: true, sort_order: 10 }
+  - { name: "平面直角坐标系", grade: "71", domain: "geo", is_recommended: false, sort_order: 11 }
+  - { name: "数据的收集与整理", grade: "71", domain: "stat", is_recommended: false, sort_order: 12 }
+
+  # ─── 八年级（72）─────────────────────────────────────────
+  - { name: "整式的乘法", grade: "72", domain: "num", is_recommended: true, sort_order: 1 }
+  - { name: "因式分解", grade: "72", domain: "num", is_recommended: true, sort_order: 2 }
+  - { name: "分式", grade: "72", domain: "num", is_recommended: true, sort_order: 3 }
+  - { name: "分式方程", grade: "72", domain: "num", is_recommended: false, sort_order: 4 }
+  - { name: "二次根式", grade: "72", domain: "num", is_recommended: false, sort_order: 5 }
+  - { name: "一次函数", grade: "72", domain: "num", is_recommended: true, sort_order: 6 }
+  - { name: "一次函数与方程/不等式", grade: "72", domain: "num", is_recommended: false, sort_order: 7 }
+  - { name: "三角形", grade: "72", domain: "geo", is_recommended: true, sort_order: 8 }
+  - { name: "全等三角形", grade: "72", domain: "geo", is_recommended: true, sort_order: 9 }
+  - { name: "轴对称与等腰三角形", grade: "72", domain: "geo", is_recommended: false, sort_order: 10 }
+  - { name: "平行四边形", grade: "72", domain: "geo", is_recommended: true, sort_order: 11 }
+  - { name: "矩形、菱形、正方形", grade: "72", domain: "geo", is_recommended: false, sort_order: 12 }
+  - { name: "勾股定理", grade: "72", domain: "geo", is_recommended: true, sort_order: 13 }
+  - { name: "数据的分析（平均数/中位数/众数/方差）", grade: "72", domain: "stat", is_recommended: false, sort_order: 14 }
+
+  # ─── 九年级（73）─────────────────────────────────────────
+  - { name: "一元二次方程", grade: "73", domain: "num", is_recommended: true, sort_order: 1 }
+  - { name: "一元二次方程应用", grade: "73", domain: "num", is_recommended: false, sort_order: 2 }
+  - { name: "二次函数", grade: "73", domain: "num", is_recommended: true, sort_order: 3 }
+  - { name: "反比例函数", grade: "73", domain: "num", is_recommended: true, sort_order: 4 }
+  - { name: "圆的性质", grade: "73", domain: "geo", is_recommended: true, sort_order: 5 }
+  - { name: "点/直线与圆的位置关系", grade: "73", domain: "geo", is_recommended: false, sort_order: 6 }
+  - { name: "切线的判定与性质", grade: "73", domain: "geo", is_recommended: false, sort_order: 7 }
+  - { name: "相似三角形", grade: "73", domain: "geo", is_recommended: true, sort_order: 8 }
+  - { name: "锐角三角函数", grade: "73", domain: "geo", is_recommended: true, sort_order: 9 }
+  - { name: "解直角三角形", grade: "73", domain: "geo", is_recommended: false, sort_order: 10 }
+  - { name: "投影与三视图", grade: "73", domain: "geo", is_recommended: false, sort_order: 11 }
+  - { name: "概率初步（列举法）", grade: "73", domain: "stat", is_recommended: false, sort_order: 12 }

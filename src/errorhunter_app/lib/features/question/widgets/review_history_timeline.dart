@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 import '../models/question_model.dart';
 
@@ -18,13 +19,14 @@ class ReviewHistoryTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
     if (records.isEmpty) {
       return Padding(
         padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
         child: Text(
           '暂无复习记录',
           style: AppTypography.primary.caption.copyWith(
-            color: AppColors.textTertiary,
+            color: tc.tertiary,
           ),
         ),
       );
@@ -36,7 +38,7 @@ class ReviewHistoryTimeline extends StatelessWidget {
         Text(
           '复习历史',
           style: AppTypography.primary.h3.copyWith(
-            color: AppColors.textPrimary,
+            color: tc.primary,
           ),
         ),
         SizedBox(height: AppSpacing.md),
@@ -63,16 +65,17 @@ class _TimelineItem extends StatelessWidget {
   final ReviewRecord record;
   final bool isLast;
 
-  Color get _resultColor {
+  Color _resultColor(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
     switch (record.result) {
       case 'CORRECT':
-        return AppColors.success;
+        return isGlass ? const Color(0xFF81C784) : AppColors.success;
       case 'WRONG':
-        return AppColors.danger;
+        return isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
       case 'PARTIAL':
-        return AppColors.warning;
+        return isGlass ? const Color(0xFFFFB74D) : AppColors.warning;
       default:
-        return AppColors.textTertiary;
+        return context.textColors.tertiary;
     }
   }
 
@@ -91,6 +94,9 @@ class _TimelineItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final resultColor = _resultColor(context);
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -104,7 +110,7 @@ class _TimelineItem extends StatelessWidget {
                   width: 10,
                   height: 10,
                   decoration: BoxDecoration(
-                    color: _resultColor,
+                    color: resultColor,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -112,7 +118,9 @@ class _TimelineItem extends StatelessWidget {
                   Expanded(
                     child: Container(
                       width: 2,
-                      color: AppColors.border,
+                      color: isGlass
+                          ? Colors.white.withOpacity(0.15)
+                          : AppColors.border,
                     ),
                   ),
               ],
@@ -131,14 +139,14 @@ class _TimelineItem extends StatelessWidget {
                       Text(
                         '第${record.reviewRound}轮复习',
                         style: AppTypography.primary.caption.copyWith(
-                          color: AppColors.textPrimary,
+                          color: tc.primary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       Text(
                         _formatDate(record.reviewDate),
                         style: AppTypography.primary.caption.copyWith(
-                          color: AppColors.textTertiary,
+                          color: tc.tertiary,
                           fontSize: 11,
                         ),
                       ),
@@ -148,7 +156,7 @@ class _TimelineItem extends StatelessWidget {
                   Text(
                     _resultLabel,
                     style: AppTypography.primary.caption.copyWith(
-                      color: _resultColor,
+                      color: resultColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -157,7 +165,7 @@ class _TimelineItem extends StatelessWidget {
                     Text(
                       record.note!,
                       style: AppTypography.primary.caption.copyWith(
-                        color: AppColors.textSecondary,
+                        color: tc.secondary,
                       ),
                     ),
                   ],

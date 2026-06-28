@@ -24,7 +24,7 @@ class AuthRepositoryMock implements AuthRepository {
   Future<AuthUser> verifyOtp({
     required String phone,
     required String otp,
-    required String grade,
+    String? grade,
   }) async {
     await _dataSource.verifyOtpDelay();
     return _dataSource.mockVerifyOtpResult(phone: phone, grade: grade);

@@ -21,6 +21,9 @@ class ApiEndpoints {
   static const String recycleBin = '/questions/recycle-bin';
   static const String recycleBinClear = '/questions/recycle-bin/clear';
 
+  // ─── Knowledge Points ───────────────────────────────────
+  static const String knowledgePoints = '/knowledge-points';
+
   // ─── Reviews ─────────────────────────────────────────────
   static const String reviews = '/reviews';
   static const String reviewQueue = '/reviews/queue';
@@ -34,6 +37,10 @@ class ApiEndpoints {
   // ─── Upload ──────────────────────────────────────────────
   static const String upload = '/upload';
   static const String ocrRecognize = '/upload/ocr';
+
+  // ─── Storage ─────────────────────────────────────────────
+  /// 当前用户在 MinIO 的错题图片总用量
+  static const String storage = '/storage';
 
   // ─── User ────────────────────────────────────────────────
   static const String user = '/users/me';

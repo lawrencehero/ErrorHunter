@@ -9,13 +9,13 @@ class MockAuthDataSource {
   /// 模拟 OTP 验证返回的用户数据
   AuthUser mockVerifyOtpResult({
     required String phone,
-    required String grade,
+    String? grade,
   }) {
     return AuthUser(
       id: 'user_001',
       phone: phone,
       nickname: '小明',
-      grade: grade,
+      grade: grade ?? '',
       token: 'mock_jwt_token_abc123',
       isFirstLogin: true,
     );

@@ -4,19 +4,23 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../di/injection.dart';
+import '../../../domain/repositories/question_repository.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/buttons/primary_button.dart';
 import '../../../widgets/common/cards/base_card.dart';
 import '../../../widgets/common/dialogs/toast.dart';
+import '../../question/models/question_model.dart';
 import '../widgets/export_preview_card.dart';
 
 /// 时间范围选项
 enum _TimeRange { thisMonth, lastThreeMonths, all }
 
-/// Mock 导出的错题数据
+/// 导出错题预览项
 class _ExportQuestionItem {
   const _ExportQuestionItem({
     required this.id,
@@ -47,16 +51,17 @@ class _PdfExportPageState extends State<PdfExportPage> {
   _TimeRange _selectedRange = _TimeRange.thisMonth;
   int _currentPage = 0;
   bool _isGenerating = false;
+  bool _isLoading = true;
   late final PageController _pageController;
 
-  // TODO: 替换为真实API调用 - 获取可导出的错题列表
-  late final List<_ExportQuestionItem> _mockQuestions;
+  /// 可导出的错题列表（来自后端真实数据）
+  List<_ExportQuestionItem> _questions = const [];
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 0.85);
-    _mockQuestions = _generateMockData();
+    _loadQuestions();
   }
 
   @override
@@ -65,39 +70,59 @@ class _PdfExportPageState extends State<PdfExportPage> {
     super.dispose();
   }
 
-  List<_ExportQuestionItem> _generateMockData() {
-    final now = DateTime.now();
-    return List.generate(12, (i) {
-      return _ExportQuestionItem(
-        id: 'q_${i + 1}',
-        imageUrl: 'https://placeholder.com/question_${i + 1}.png',
-        errorCategory: ['KNOWLEDGE', 'SKILL', 'PSYCHOLOGY', 'HABIT'][i % 4],
-        knowledgePoints: [
-          ['分数运算', '小数乘法', '几何面积', '方程求解'][i % 4],
-          if (i % 3 == 0) '应用题',
-        ],
-        createdAt: now.subtract(Duration(days: i * 3)),
-        isOffline: i == 2 || i == 7, // 模拟2道离线题
-      );
-    });
+  Future<void> _loadQuestions() async {
+    try {
+      final questions = await sl<QuestionRepository>().getQuestions();
+      if (!mounted) return;
+      setState(() {
+        _questions = questions.map(_toExportItem).toList();
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _questions = const [];
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// QuestionModel → 导出预览项
+  ///
+  /// isOffline 语义：仅当 imageUrl 为「非空且非 http(s)」时视为待同步——
+  /// 即图片已拍照存到本地文件路径，但尚未上传到对象存储。
+  /// 空 imageUrl 表示该错题根本没有图片（不应判为待同步，也不应弹占位提示）。
+  static _ExportQuestionItem _toExportItem(QuestionModel q) {
+    final url = q.imageUrl;
+    final isOffline = url.isNotEmpty &&
+        !url.startsWith('http://') &&
+        !url.startsWith('https://');
+    return _ExportQuestionItem(
+      id: q.id,
+      imageUrl: url,
+      errorCategory: q.errorCategory.code,
+      knowledgePoints: q.knowledgePoints.map((k) => k.name).toList(),
+      createdAt: q.createdAt,
+      isOffline: isOffline,
+    );
   }
 
   List<_ExportQuestionItem> get _filteredQuestions {
     final now = DateTime.now();
     switch (_selectedRange) {
       case _TimeRange.thisMonth:
-        return _mockQuestions
+        return _questions
             .where((q) =>
                 q.createdAt.month == now.month &&
                 q.createdAt.year == now.year)
             .toList();
       case _TimeRange.lastThreeMonths:
         final threeMonthsAgo = DateTime(now.year, now.month - 3, now.day);
-        return _mockQuestions
+        return _questions
             .where((q) => q.createdAt.isAfter(threeMonthsAgo))
             .toList();
       case _TimeRange.all:
-        return _mockQuestions;
+        return _questions;
     }
   }
 
@@ -105,6 +130,39 @@ class _PdfExportPageState extends State<PdfExportPage> {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    // 玻璃拟态：深色渐变背景，蓝色 brandPrimary / 深灰中性色对比度不足，
+    // 改用暖琥珀强调色 + 主题感知文字色（与 reminder_settings_page.dart 一致）。
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+            onPressed: () => context.pop(),
+          ),
+          title: Text(
+            '导出PDF',
+            style: AppTypography.primary.h3.copyWith(
+              color: tc.primary,
+            ),
+          ),
+          centerTitle: true,
+        ),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: accent,
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
+
     final filtered = _filteredQuestions;
     final totalPages = filtered.isEmpty ? 1 : filtered.length;
 
@@ -120,7 +178,7 @@ class _PdfExportPageState extends State<PdfExportPage> {
         title: Text(
           '导出PDF',
           style: AppTypography.primary.h3.copyWith(
-            color: AppColors.textPrimary,
+            color: tc.primary,
           ),
         ),
         centerTitle: true,
@@ -151,7 +209,7 @@ class _PdfExportPageState extends State<PdfExportPage> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppColors.brandPrimary.withOpacity(0.1)
+                                ? accent.withOpacity(isGlass ? 0.2 : 0.1)
                                 : Colors.transparent,
                             borderRadius: AppRadius.radiusMd,
                           ),
@@ -165,16 +223,16 @@ class _PdfExportPageState extends State<PdfExportPage> {
                                     : Icons.radio_button_off_rounded,
                                 size: 18,
                                 color: isSelected
-                                    ? AppColors.brandPrimary
-                                    : AppColors.textTertiary,
+                                    ? accent
+                                    : tc.tertiary,
                               ),
                               SizedBox(width: AppSpacing.xs),
                               Text(
                                 _rangeLabel(range),
                                 style: AppTypography.primary.caption.copyWith(
                                   color: isSelected
-                                      ? AppColors.brandPrimary
-                                      : AppColors.textSecondary,
+                                      ? accent
+                                      : tc.secondary,
                                   fontWeight:
                                       isSelected ? FontWeight.w600 : null,
                                 ),
@@ -203,19 +261,22 @@ class _PdfExportPageState extends State<PdfExportPage> {
                     vertical: AppSpacing.sm,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withOpacity(0.1),
+                    color: accent.withOpacity(isGlass ? 0.18 : 0.1),
                     borderRadius: AppRadius.radiusMd,
+                    border: isGlass
+                        ? Border.all(color: accent.withOpacity(0.4))
+                        : null,
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded,
-                          size: 18, color: AppColors.warning),
+                      Icon(Icons.warning_amber_rounded,
+                          size: 18, color: accent),
                       SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
                           '⚠️ $_offlineCount道题图片待同步，将显示占位图',
                           style: AppTypography.primary.caption.copyWith(
-                            color: AppColors.warning,
+                            color: accent,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -233,12 +294,12 @@ class _PdfExportPageState extends State<PdfExportPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.description_outlined,
-                              size: 64, color: AppColors.textTertiary),
+                              size: 64, color: tc.tertiary),
                           SizedBox(height: AppSpacing.sm),
                           Text(
                             '暂无错题可导出',
                             style: AppTypography.primary.body.copyWith(
-                              color: AppColors.textSecondary,
+                              color: tc.secondary,
                             ),
                           ),
                         ],
@@ -271,7 +332,7 @@ class _PdfExportPageState extends State<PdfExportPage> {
                           child: Text(
                             'Page ${_currentPage + 1}/$totalPages',
                             style: AppTypography.primary.caption.copyWith(
-                              color: AppColors.textSecondary,
+                              color: tc.secondary,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -324,11 +385,11 @@ class _PdfExportPageState extends State<PdfExportPage> {
     }
 
     return EHPrimaryButton(
-      text: '📄 生成PDF并分享',
-      onPressed: _handleGenerate,
+      text: '📄 PDF导出（即将上线）',
+      onPressed: null, // TODO: PDF 生成功能开发中，完成后恢复 _handleGenerate
       size: EHButtonSize.lg,
       fullWidth: true,
-      isLoading: _isGenerating,
+      enabled: false,
     );
   }
 

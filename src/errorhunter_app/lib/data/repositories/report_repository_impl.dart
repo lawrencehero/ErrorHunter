@@ -4,6 +4,7 @@ library;
 
 import '../../domain/repositories/report_repository.dart';
 import '../../features/report/models/weekly_report_model.dart';
+import '../../features/report/models/dashboard_model.dart';
 import '../remote/report_remote_data_source.dart';
 
 /// Report Repository 的真实实现
@@ -12,6 +13,9 @@ class ReportRepositoryImpl implements ReportRepository {
       : _dataSource = dataSource;
 
   final ReportRemoteDataSource _dataSource;
+
+  @override
+  Future<DashboardData> getDashboard() => _dataSource.getDashboard();
 
   @override
   Future<List<WeeklySummary>> getWeeklySummaries() =>

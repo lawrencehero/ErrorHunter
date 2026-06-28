@@ -19,6 +19,7 @@ import '../bloc/question_bloc.dart';
 import '../bloc/question_event.dart';
 import '../bloc/question_state.dart';
 import '../models/question_model.dart';
+import '../widgets/math_text.dart';
 import '../widgets/image_preview.dart';
 import '../widgets/review_history_timeline.dart';
 import '../widgets/review_progress_bar.dart';
@@ -36,6 +37,7 @@ class QuestionDetailPage extends StatefulWidget {
 
 class _QuestionDetailPageState extends State<QuestionDetailPage> {
   bool _isEditMode = false;
+  bool _isSaving = false;
 
   // Bug #28: 跟踪可折叠区块的展开状态（默认全部折叠）
   final Set<String> _expandedSections = {};
@@ -65,6 +67,9 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   void _toggleEdit(QuestionModel question) {
+    // 防抖：保存中不允许再次点击
+    if (_isSaving) return;
+
     setState(() {
       _isEditMode = !_isEditMode;
       if (_isEditMode) {
@@ -72,17 +77,32 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         _myAnswerController.text = question.myAnswer ?? '';
         _correctAnswerController.text = question.correctAnswer ?? '';
       } else {
-        // Auto-save on exit edit mode
-        final updated = question.copyWith(
-          ocrText: _ocrController.text.isEmpty ? null : _ocrController.text,
-          myAnswer: _myAnswerController.text.isEmpty ? null : _myAnswerController.text,
-          correctAnswer: _correctAnswerController.text.isEmpty ? null : _correctAnswerController.text,
-          updatedAt: DateTime.now(),
-        );
-        context.read<QuestionBloc>().add(UpdateQuestion(updated));
-        EHToast.show(context, message: '已自动保存', type: EHToastType.success);
+        // Auto-save on exit edit mode (with debounce + error handling)
+        _saveEdits(question);
       }
     });
+  }
+
+  Future<void> _saveEdits(QuestionModel question) async {
+    setState(() => _isSaving = true);
+    try {
+      final updated = question.copyWith(
+        ocrText: _ocrController.text.isEmpty ? null : _ocrController.text,
+        myAnswer: _myAnswerController.text.isEmpty ? null : _myAnswerController.text,
+        correctAnswer: _correctAnswerController.text.isEmpty ? null : _correctAnswerController.text,
+        updatedAt: DateTime.now(),
+      );
+      context.read<QuestionBloc>().add(UpdateQuestion(updated));
+      if (!mounted) return;
+      EHToast.show(context, message: '已自动保存', type: EHToastType.success);
+    } catch (e) {
+      if (!mounted) return;
+      EHToast.show(context, message: '保存失败，请重试', type: EHToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   Future<void> _deleteQuestion(String id) async {
@@ -146,13 +166,17 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   @override
   Widget build(BuildContext context) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return BlocBuilder<QuestionBloc, QuestionState>(
       builder: (context, state) {
         if (state is QuestionDetailLoading) {
           return Scaffold(
             backgroundColor: Colors.transparent,
-            appBar: AppBar(backgroundColor: AppColors.surface, elevation: 0),
-            body: const Center(child: CircularProgressIndicator(color: AppColors.brandPrimary)),
+            appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
+            body: Center(
+                child: CircularProgressIndicator(color: accentColor)),
           );
         }
 
@@ -163,21 +187,21 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
         if (state is QuestionError) {
           return Scaffold(
             backgroundColor: Colors.transparent,
-            appBar: AppBar(backgroundColor: AppColors.surface, elevation: 0),
+            appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
             body: Center(
-              child: Text(state.message, style: AppTypography.primary.body),
+              child: Text(state.message,
+                  style:
+                      AppTypography.primary.body.copyWith(color: tc.primary)),
             ),
           );
         }
 
-        // Trigger load
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          context.read<QuestionBloc>().add(LoadQuestionDetail(widget.questionId));
-        });
+        // 其它状态（如初始）：显示加载中，initState 已派发 LoadQuestionDetail
         return Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(backgroundColor: AppColors.surface, elevation: 0),
-          body: const Center(child: CircularProgressIndicator(color: AppColors.brandPrimary)),
+          appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
+          body: Center(
+              child: CircularProgressIndicator(color: accentColor)),
         );
       },
     );
@@ -185,6 +209,14 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
 
   Widget _buildDetail(QuestionModel question) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    // 玻璃下红/绿语义色对比度不足，提亮以保证可读
+    final dangerColor =
+        isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
+    final successColor =
+        isGlass ? const Color(0xFF81C784) : AppColors.success;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -198,7 +230,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
           Padding(
             padding: EdgeInsets.only(right: AppSpacing.sm),
             child: GestureDetector(
-              onTap: () => _toggleEdit(question),
+              onTap: _isSaving ? null : () => _toggleEdit(question),
               behavior: HitTestBehavior.opaque,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
@@ -206,12 +238,18 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.edit_outlined, size: 18, color: AppColors.brandPrimary),
+                    if (_isSaving)
+                      SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: accentColor),
+                      )
+                    else
+                      Icon(Icons.edit_outlined, size: 18, color: accentColor),
                     SizedBox(width: 2),
                     Text(
                       _isEditMode ? '完成' : '编辑',
                       style: AppTypography.primary.caption.copyWith(
-                        color: AppColors.brandPrimary,
+                        color: _isSaving ? accentColor.withOpacity(0.5) : accentColor,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -251,7 +289,10 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       constraints: const BoxConstraints(maxHeight: 240),
                       decoration: BoxDecoration(
                         borderRadius: AppRadius.radiusLg,
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(
+                            color: isGlass
+                                ? Colors.white.withOpacity(0.25)
+                                : AppColors.border),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: question.imageUrl.startsWith('/')
@@ -274,9 +315,10 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                     ),
                   )
                 else if (question.ocrText != null && question.ocrText!.isNotEmpty)
-                  SelectableText(
+                  MathText(
                     question.ocrText!,
                     style: AppTypography.primary.body.copyWith(color: tc.primary),
+                    mathStyle: AppTypography.primary.body.copyWith(color: tc.primary),
                   ),
 
                 SizedBox(height: AppSpacing.lg),
@@ -315,9 +357,14 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                     ...question.subCategories.map((sub) => Container(
                           padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
                           decoration: BoxDecoration(
-                            color: AppColors.background,
+                            color: isGlass
+                                ? Colors.white.withOpacity(0.12)
+                                : AppColors.background,
                             borderRadius: AppRadius.radiusSm,
-                            border: Border.all(color: AppColors.border),
+                            border: Border.all(
+                                color: isGlass
+                                    ? Colors.white.withOpacity(0.25)
+                                    : AppColors.border),
                           ),
                           child: Text(sub, style: AppTypography.primary.caption.copyWith(color: tc.secondary)),
                         )),
@@ -362,12 +409,15 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       width: double.infinity,
                       padding: AppSpacing.cardPadding,
                       decoration: BoxDecoration(
-                        color: AppColors.danger.withOpacity(0.05),
+                        color: dangerColor.withOpacity(isGlass ? 0.16 : 0.05),
                         borderRadius: AppRadius.radiusMd,
+                        border: isGlass
+                            ? Border.all(color: dangerColor.withOpacity(0.4))
+                            : null,
                       ),
                       child: Text(
                         question.myAnswer!,
-                        style: AppTypography.primary.body.copyWith(color: AppColors.danger),
+                        style: AppTypography.primary.body.copyWith(color: dangerColor),
                       ),
                     ),
                   SizedBox(height: AppSpacing.lg),
@@ -392,12 +442,15 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       width: double.infinity,
                       padding: AppSpacing.cardPadding,
                       decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.05),
+                        color: successColor.withOpacity(isGlass ? 0.16 : 0.05),
                         borderRadius: AppRadius.radiusMd,
+                        border: isGlass
+                            ? Border.all(color: successColor.withOpacity(0.4))
+                            : null,
                       ),
                       child: Text(
                         question.correctAnswer!,
-                        style: AppTypography.primary.body.copyWith(color: AppColors.success),
+                        style: AppTypography.primary.body.copyWith(color: successColor),
                       ),
                     ),
                   SizedBox(height: AppSpacing.lg),
@@ -436,10 +489,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       children: question.customTags.map((tag) => Container(
                             padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
                             decoration: BoxDecoration(
-                              color: AppColors.brandPrimary.withOpacity(0.1),
+                              color: accentColor.withOpacity(isGlass ? 0.2 : 0.1),
                               borderRadius: AppRadius.radiusFull,
+                              border: isGlass
+                                  ? Border.all(color: accentColor.withOpacity(0.5))
+                                  : null,
                             ),
-                            child: Text(tag, style: AppTypography.primary.caption.copyWith(color: AppColors.brandPrimary)),
+                            child: Text(tag, style: AppTypography.primary.caption.copyWith(color: accentColor)),
                           )).toList(),
                     ),
                   ),
@@ -461,14 +517,23 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                 bottom: MediaQuery.of(context).padding.bottom + AppSpacing.sm,
               ),
               decoration: BoxDecoration(
-                color: AppColors.surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
+                color: isGlass
+                    ? Colors.white.withOpacity(0.18)
+                    : AppColors.surface,
+                border: isGlass
+                    ? Border(
+                        top: BorderSide(color: Colors.white.withOpacity(0.25)),
+                      )
+                    : null,
+                boxShadow: isGlass
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
               ),
               child: question.isEliminated
                   ? EHPrimaryButton(
@@ -507,6 +572,9 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     required Widget child,
   }) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     final isExpanded = _expandedSections.contains(sectionId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -526,7 +594,7 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
             padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: AppColors.brandPrimary),
+                Icon(icon, size: 18, color: accentColor),
                 SizedBox(width: AppSpacing.xs),
                 Text(
                   title,
@@ -568,6 +636,9 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   /// 通用网络图片组件，带 loading 和 error 状态
   Widget _buildNetworkImage(String url, {BoxFit fit = BoxFit.contain}) {
     final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Image.network(
       url,
       fit: fit,
@@ -580,13 +651,13 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                     loadingProgress.expectedTotalBytes!
                 : null,
             strokeWidth: 2,
-            color: AppColors.brandPrimary,
+            color: accentColor,
           ),
         );
       },
       errorBuilder: (_, __, ___) => Container(
         height: 120,
-        color: AppColors.background,
+        color: isGlass ? Colors.white.withOpacity(0.12) : AppColors.background,
         child: Center(
           child: Icon(Icons.image_not_supported, color: tc.tertiary),
         ),

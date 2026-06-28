@@ -8,6 +8,7 @@ import '../../../theme/gradients.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 
 class TodayTaskCard extends StatelessWidget {
   const TodayTaskCard({super.key, required this.pendingCount, this.onStartReview});
@@ -16,21 +17,30 @@ class TodayTaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    final tc = context.textColors;
+    // 玻璃下强调色提亮为暖琥珀（避免蓝色叠渐变背景）
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        // 玻璃下：半透明白底 + 白描边，去掉 chunky 蓝底影
+        color: isGlass ? Colors.white.withOpacity(0.12) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2)),
-          BoxShadow(
-            color: AppColors.brandPrimaryDark,
-            offset: const Offset(0, 4),
-            blurRadius: 0,
-            spreadRadius: 0,
-          ),
-        ],
+        border: isGlass ? Border.all(color: Colors.white.withOpacity(0.25), width: 1) : null,
+        boxShadow: isGlass
+            ? null
+            : [
+                BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2)),
+                BoxShadow(
+                  color: AppColors.brandPrimaryDark,
+                  offset: const Offset(0, 4),
+                  blurRadius: 0,
+                  spreadRadius: 0,
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,13 +49,13 @@ class TodayTaskCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: AppColors.brandPrimaryPale,
+              color: isGlass ? Colors.white.withOpacity(0.15) : AppColors.brandPrimaryPale,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
               '📝 今日任务',
               style: TextStyle(
-                color: AppColors.brandPrimary,
+                color: isGlass ? Colors.white : AppColors.brandPrimary,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -59,7 +69,7 @@ class TodayTaskCard extends StatelessWidget {
               Text(
                 '$pendingCount',
                 style: TextStyle(
-                  color: AppColors.brandPrimary,
+                  color: isGlass ? accent : AppColors.brandPrimary,
                   fontSize: 56,
                   fontWeight: FontWeight.w800,
                   height: 0.85,
@@ -72,7 +82,7 @@ class TodayTaskCard extends StatelessWidget {
                 child: Text(
                   '道错题等你复习',
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: tc.primary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
@@ -81,7 +91,7 @@ class TodayTaskCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          // 3D 渐变按钮
+          // 3D 渐变按钮（玻璃下去掉 chunky 底影，保留渐变主操作视觉）
           GestureDetector(
             onTap: onStartReview,
             child: Container(
@@ -90,14 +100,17 @@ class TodayTaskCard extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: AppGradients.primary,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.brandPrimaryDark,
-                    offset: const Offset(0, 4),
-                    blurRadius: 0,
-                    spreadRadius: 0,
-                  ),
-                ],
+                border: isGlass ? Border.all(color: Colors.white.withOpacity(0.25), width: 1) : null,
+                boxShadow: isGlass
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: AppColors.brandPrimaryDark,
+                          offset: const Offset(0, 4),
+                          blurRadius: 0,
+                          spreadRadius: 0,
+                        ),
+                      ],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,

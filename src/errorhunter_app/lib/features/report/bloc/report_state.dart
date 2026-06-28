@@ -3,6 +3,7 @@ library;
 
 import 'package:equatable/equatable.dart';
 import '../models/weekly_report_model.dart';
+import '../models/dashboard_model.dart';
 
 /// Report State 基类
 sealed class ReportState extends Equatable {
@@ -20,6 +21,16 @@ class ReportInitial extends ReportState {
 /// 加载中
 class ReportLoading extends ReportState {
   const ReportLoading();
+}
+
+/// Dashboard 加载完成
+class DashboardLoaded extends ReportState {
+  const DashboardLoaded(this.dashboard);
+
+  final DashboardData dashboard;
+
+  @override
+  List<Object?> get props => [dashboard];
 }
 
 /// 周报列表加载完成

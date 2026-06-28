@@ -5,6 +5,7 @@ library;
 import 'package:dio/dio.dart';
 
 import '../../features/question/models/question_model.dart';
+import '../../features/question/models/ocr_result.dart';
 import '../remote/api_client.dart';
 import '../remote/api_endpoints.dart';
 
@@ -23,7 +24,7 @@ class QuestionRemoteDataSource {
   }) async {
     final queryParams = <String, dynamic>{
       'page': page,
-      if (category != null) 'category': category,
+      if (category != null) 'error_category': category,
       if (status != null) 'status': status,
       if (knowledgePointId != null) 'knowledge_point_id': knowledgePointId,
     };
@@ -34,7 +35,7 @@ class QuestionRemoteDataSource {
     );
 
     final data = response.data?['data'] as Map<String, dynamic>?;
-    final items = data?['items'] as List<dynamic>? ?? [];
+    final items = (data?['list'] ?? data?['items']) as List<dynamic>? ?? [];
 
     return items
         .map((item) =>
@@ -50,7 +51,7 @@ class QuestionRemoteDataSource {
     );
 
     final data = response.data?['data'] as Map<String, dynamic>?;
-    final items = data?['items'] as List<dynamic>? ?? [];
+    final items = (data?['list'] ?? data?['items']) as List<dynamic>? ?? [];
 
     return items
         .map((item) =>
@@ -101,18 +102,38 @@ class QuestionRemoteDataSource {
     await _client.delete(endpoint);
   }
 
-  /// OCR 识别图片
-  Future<String> ocrImage(String imagePath) async {
+  /// OCR 识别图片（两步：先上传图片，再调 OCR）
+  Future<OcrResult> ocrImage(String imagePath) async {
+    // Step 1: 上传图片到 MinIO
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(imagePath),
+      'image': await MultipartFile.fromFile(imagePath),
     });
 
-    final response = await _client.upload<Map<String, dynamic>>(
-      ApiEndpoints.ocrRecognize,
+    final uploadResponse = await _client.upload<Map<String, dynamic>>(
+      ApiEndpoints.upload,
       formData: formData,
     );
 
-    final data = response.data?['data'] as Map<String, dynamic>?;
-    return data?['text'] as String? ?? '';
+    final uploadData = uploadResponse.data?['data'] as Map<String, dynamic>?;
+    final imageUrl = uploadData?['image_url'] as String?;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      throw Exception('图片上传失败');
+    }
+
+    // Step 2: 调用 OCR 识别
+    final ocrResponse = await _client.post<Map<String, dynamic>>(
+      ApiEndpoints.ocrRecognize,
+      data: {'image_url': imageUrl},
+    );
+
+    final ocrData = ocrResponse.data?['data'] as Map<String, dynamic>?;
+    final text = ocrData?['text'] as String? ?? '';
+    final figuresRaw = ocrData?['figures'] as List<dynamic>? ?? [];
+    final figures = figuresRaw
+        .map((e) => OcrFigure.fromJson(e as Map<String, dynamic>))
+        .where((f) => f.width > 0 && f.height > 0)
+        .toList();
+    // imageUrl 是上传到对象存储后的可访问 URL，保存错题时用它（而非本地临时路径）
+    return OcrResult(text: text, imageUrl: imageUrl, figures: figures);
   }
 }

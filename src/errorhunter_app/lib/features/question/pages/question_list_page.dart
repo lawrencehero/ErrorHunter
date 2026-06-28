@@ -4,6 +4,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../di/injection.dart';
+import '../../../domain/repositories/knowledge_point_repository.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/spacing.dart';
@@ -15,9 +17,12 @@ import '../../../widgets/common/chips/filter_chip.dart';
 import '../../../widgets/common/empty_states/no_questions_empty.dart';
 import '../../../widgets/common/inputs/search_bar.dart';
 import '../../../widgets/common/loading/skeleton_list.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/bloc/auth_state.dart';
 import '../bloc/question_bloc.dart';
 import '../bloc/question_event.dart';
 import '../bloc/question_state.dart';
+import '../models/knowledge_point_model.dart';
 import '../models/question_model.dart';
 import '../widgets/review_progress_bar.dart';
 
@@ -39,6 +44,10 @@ class _QuestionListPageState extends State<QuestionListPage>
   ErrorCategory? _filterCategory;
   String? _filterKnowledgePoint;
 
+  // 知识点下拉项（按年级从后端拉取）
+  List<KnowledgePoint> _knowledgePoints = const [];
+  bool _kpLoading = true;
+
   /// 是否有任意筛选条件不为默认值
   bool get _hasActiveFilters =>
       _filterCategory != null || _filterKnowledgePoint != null;
@@ -49,7 +58,10 @@ class _QuestionListPageState extends State<QuestionListPage>
       _filterCategory = null;
       _filterKnowledgePoint = null;
     });
-    context.read<QuestionBloc>().add(const LoadQuestions(refresh: true));
+    _tabController.removeListener(_onTabChanged);
+    _tabController.index = 0;
+    _tabController.addListener(_onTabChanged);
+    _dispatchLoad(status: null);
   }
 
   static const _statusTabs = [
@@ -68,8 +80,76 @@ class _QuestionListPageState extends State<QuestionListPage>
     _tabController.addListener(_onTabChanged);
     // Load initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<QuestionBloc>().add(const LoadQuestions(refresh: true));
+      _loadKnowledgePoints();
+      _applyDeepLink();
     });
+  }
+
+  /// 读取路由 query 参数（tab / kp）并应用为初始筛选
+  void _applyDeepLink() {
+    final qp = GoRouterState.of(context).uri.queryParameters;
+    final tab = qp['tab'];
+    final kp = qp['kp'];
+
+    int tabIndex = 0;
+    switch (tab) {
+      case 'notStarted':
+        tabIndex = 1;
+        break;
+      case 'reviewing':
+        tabIndex = 2;
+        break;
+      case 'mastered':
+        tabIndex = 3;
+        break;
+      default:
+        tabIndex = 0;
+    }
+
+    if (kp != null && kp.isNotEmpty) {
+      setState(() => _filterKnowledgePoint = kp);
+    }
+
+    if (tabIndex != 0) {
+      _tabController.removeListener(_onTabChanged);
+      _tabController.index = tabIndex;
+      _tabController.addListener(_onTabChanged);
+    }
+
+    // 全量加载（各 tab 客户端按 status 过滤），tab 参数仅用于设置初始视觉位置
+    _dispatchLoad(status: null);
+  }
+
+  /// 按当前所有筛选条件加载错题
+  void _dispatchLoad({QuestionStatus? status, int page = 1, bool refresh = true}) {
+    context.read<QuestionBloc>().add(LoadQuestions(
+          status: status,
+          category: _filterCategory,
+          knowledgePointId: _filterKnowledgePoint,
+          page: page,
+          refresh: refresh,
+        ));
+  }
+
+  /// 加载当前年级的知识点（用于知识点下拉）
+  Future<void> _loadKnowledgePoints() async {
+    final authState = context.read<AuthBloc>().state;
+    final grade = authState is Authenticated ? authState.user.grade : '';
+    if (grade.isEmpty) {
+      if (mounted) setState(() => _kpLoading = false);
+      return;
+    }
+    try {
+      final points = await sl<KnowledgePointRepository>().getByGrade(grade: grade);
+      if (!mounted) return;
+      setState(() {
+        _knowledgePoints = points;
+        _kpLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _kpLoading = false);
+    }
   }
 
   @override
@@ -81,9 +161,8 @@ class _QuestionListPageState extends State<QuestionListPage>
   }
 
   void _onTabChanged() {
-    if (!_tabController.indexIsChanging) return;
-    final status = _statusTabs[_tabController.index];
-    context.read<QuestionBloc>().add(FilterByStatus(status));
+    // 切 tab 不发网络请求：各 tab 已客户端按 status 过滤，
+    // 指示器/动画由 TabBar + TabBarView 经 controller 自动处理。
   }
 
   void _toggleSearch() {
@@ -206,25 +285,31 @@ class _QuestionListPageState extends State<QuestionListPage>
               ],
               onChanged: (v) {
                 setState(() => _filterCategory = v as ErrorCategory?);
-                context.read<QuestionBloc>().add(FilterByCategory(v as ErrorCategory?));
+                _dispatchLoad(status: null);
               },
             ),
             SizedBox(width: AppSpacing.sm),
             _FilterDropdown(
               label: '知识点',
               icon: Icons.bookmark_outline,
-              selectedValue: _filterKnowledgePoint,
-              items: const [
-                DropdownMenuItem(value: null, child: Text('全部')),
-                DropdownMenuItem(value: 'kp01', child: Text('四则运算')),
-                DropdownMenuItem(value: 'kp02', child: Text('运算顺序')),
-                DropdownMenuItem(value: 'kp03', child: Text('分数化简')),
+              selectedValue: (_knowledgePoints.any((kp) => kp.id == _filterKnowledgePoint))
+                  ? _filterKnowledgePoint
+                  : null,
+              items: [
+                const DropdownMenuItem(value: null, child: Text('全部')),
+                if (_kpLoading)
+                  const DropdownMenuItem(
+                    enabled: false,
+                    value: '__loading',
+                    child: Text('加载中...'),
+                  ),
+                ..._knowledgePoints.map(
+                  (kp) => DropdownMenuItem(value: kp.id, child: Text(kp.name)),
+                ),
               ],
               onChanged: (v) {
                 setState(() => _filterKnowledgePoint = v as String?);
-                context
-                    .read<QuestionBloc>()
-                    .add(FilterByKnowledgePoint(v as String?));
+                _dispatchLoad(status: null);
               },
             ),
             SizedBox(width: AppSpacing.sm),
@@ -284,73 +369,117 @@ class _QuestionListPageState extends State<QuestionListPage>
   }
 
   Widget _buildContent() {
-    return BlocBuilder<QuestionBloc, QuestionState>(
-      builder: (context, state) {
-        if (state is QuestionListLoading) {
-          return const EHSkeletonList(itemCount: 6);
-        }
-
-        if (state is QuestionListLoaded) {
-          if (state.questions.isEmpty) {
-            return EHNoQuestionsEmpty(
-              onAddQuestion: () => context.go(Routes.addQuestion),
-            );
-          }
-          return RefreshIndicator(
-            color: AppColors.brandPrimary,
-            onRefresh: () async {
-              context.read<QuestionBloc>().add(const LoadQuestions(refresh: true));
-            },
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: AppSpacing.pagePadding.copyWith(
-                top: AppSpacing.sm,
-                bottom: AppSpacing.xxl,
-              ),
-              // Bug #46: +1 for load-more or end-of-list indicator
-              itemCount: state.questions.length + 1,
-              separatorBuilder: (_, __) => SizedBox(height: AppSpacing.sm),
-              itemBuilder: (context, index) {
-                if (index >= state.questions.length) {
-                  // Bug #46: Show end-of-list indicator when no more data
-                  if (!state.hasMore) {
-                    return _buildEndOfList();
-                  }
-                  // Load more trigger
-                  return _buildLoadMore(state);
-                }
-                return _buildQuestionItem(state.questions[index]);
-              },
-            ),
-          );
-        }
-
-        if (state is QuestionError) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.error_outline, size: 48, color: AppColors.danger),
-                SizedBox(height: AppSpacing.sm),
-                Text(state.message, style: AppTypography.primary.body),
-                SizedBox(height: AppSpacing.md),
-                GestureDetector(
-                  onTap: () => context
-                      .read<QuestionBloc>()
-                      .add(const LoadQuestions(refresh: true)),
-                  child: Text('点击重试',
-                      style: AppTypography.primary.button
-                          .copyWith(color: AppColors.brandPrimary)),
-                ),
-              ],
-            ),
-          );
-        }
-
-        // Initial state - show skeleton (load already triggered in initState)
-        return const EHSkeletonList(itemCount: 6);
-      },
+    // BlocBuilder 下沉到每个 tab child：state 变化只重建各 tab 内容，
+    // 不重建 TabBarView 本身 → 消除滑动动画被打断导致的抖动/滑动失效。
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        for (final status in _statusTabs)
+          BlocBuilder<QuestionBloc, QuestionState>(
+            builder: (context, state) =>
+                _QuestionTabBody(state: state, tabStatus: status),
+          ),
+      ],
     );
+  }
+}
+
+/// 单个 tab 页内容（带 keep-alive，避免切 tab 时子页被 dispose，保住滚动位置/手势状态）。
+class _QuestionTabBody extends StatefulWidget {
+  const _QuestionTabBody({required this.state, required this.tabStatus});
+
+  final QuestionState state;
+  /// 该 tab 对应的 status 过滤值；null 表示「全部」不过滤。
+  final QuestionStatus? tabStatus;
+
+  @override
+  State<_QuestionTabBody> createState() => _QuestionTabBodyState();
+}
+
+class _QuestionTabBodyState extends State<_QuestionTabBody>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final state = widget.state;
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+
+    if (state is QuestionListLoading) {
+      return const EHSkeletonList(itemCount: 6);
+    }
+
+    if (state is QuestionListLoaded) {
+      // 客户端按 tab status 过滤（tabStatus==null 即「全部」不过滤）。
+      final filtered = widget.tabStatus == null
+          ? state.questions
+          : state.questions
+              .where((q) => q.status == widget.tabStatus)
+              .toList(growable: false);
+      // 空态判断基于「过滤后」的 list。
+      if (filtered.isEmpty) {
+        return EHNoQuestionsEmpty(
+          onAddQuestion: () => context.go(Routes.addQuestion),
+        );
+      }
+      return RefreshIndicator(
+        color: accentColor,
+        onRefresh: () async {
+          // 下拉刷新全量（status: null），各 tab 自行客户端过滤。
+          context.read<QuestionBloc>().add(
+                const LoadQuestions(refresh: true),
+              );
+        },
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: AppSpacing.pagePadding.copyWith(
+            top: AppSpacing.sm,
+            bottom: AppSpacing.xxl,
+          ),
+          itemCount: filtered.length + 1,
+          separatorBuilder: (_, __) => SizedBox(height: AppSpacing.sm),
+          itemBuilder: (context, index) {
+            if (index >= filtered.length) {
+              if (!state.hasMore) {
+                return _buildEndOfList();
+              }
+              return _buildLoadMore(state);
+            }
+            return _buildQuestionItem(filtered[index]);
+          },
+        ),
+      );
+    }
+
+    if (state is QuestionError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: AppColors.danger),
+            SizedBox(height: AppSpacing.sm),
+            Text(state.message,
+                style: AppTypography.primary.body.copyWith(color: tc.primary)),
+            SizedBox(height: AppSpacing.md),
+            GestureDetector(
+              onTap: () => context
+                  .read<QuestionBloc>()
+                  .add(const LoadQuestions(refresh: true)),
+              child: Text('点击重试',
+                  style: AppTypography.primary.button
+                      .copyWith(color: accentColor)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const EHSkeletonList(itemCount: 6);
   }
 
   Widget _buildQuestionItem(QuestionModel question) {
@@ -402,35 +531,34 @@ class _QuestionListPageState extends State<QuestionListPage>
   }
 
   Widget _buildLoadMore(QuestionListLoaded state) {
-    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Padding(
       padding: EdgeInsets.symmetric(vertical: AppSpacing.base),
       child: Center(
         child: GestureDetector(
           onTap: () {
+            // 加载更多：全量（status: null），仅按 category/kp 服务端筛选；hasMore 逻辑不变。
             context.read<QuestionBloc>().add(LoadQuestions(
                   page: state.currentPage + 1,
-                  status: state.filterStatus,
+                  status: null,
                   category: state.filterCategory,
+                  knowledgePointId: state.filterKnowledgePoint,
+                  refresh: false,
                 ));
           },
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(AppColors.brandPrimary),
-                ),
-              ),
-              SizedBox(width: AppSpacing.sm),
+              Icon(Icons.expand_more_rounded,
+                  size: 18, color: accentColor),
+              SizedBox(width: AppSpacing.xs),
               Text(
-                '加载更多...',
+                '点击加载更多',
                 style: AppTypography.primary.caption.copyWith(
-                  color: tc.secondary,
+                  color: accentColor,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],

@@ -2,8 +2,10 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../theme/app_theme_mode.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/theme_manager.dart';
 import '../../../theme/radius.dart';
@@ -80,6 +82,13 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tc = context.textColors;
+    // 玻璃拟态主题：背景为深色渐变，蓝色 brandPrimary 在其上对比度不足，
+    // 改用暖琥珀色作为强调色（与 question_list_page.dart / profile_page.dart 保持一致）。
+    final isGlass = context.themeExt.headerStyle == HeaderStyle.transparent;
+    final accentColor = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    // 次要强调色（消灭动画开关用），玻璃下用更亮的橙红保证对比。
+    final accentColor2 =
+        isGlass ? const Color(0xFFFFAB91) : AppColors.brandSecondary;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -109,7 +118,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
               child: Row(
                 children: [
                   Icon(Icons.notifications_active_outlined,
-                      size: 24, color: AppColors.brandPrimary),
+                      size: 24, color: accentColor),
                   SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
@@ -134,16 +143,34 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                   ),
                   Switch.adaptive(
                     value: _reminderEnabled,
-                    activeColor: AppColors.brandPrimary,
-                    onChanged: (v) {
+                    activeColor: accentColor,
+                    onChanged: (v) async {
                       setState(() => _reminderEnabled = v);
                       if (v) {
-                        // TODO: 集成 flutter_local_notifications 后，在此处请求通知权限
+                        // 主动请求通知权限
+                        final plugin = FlutterLocalNotificationsPlugin();
+                        try {
+                          // Android 13+ 请求通知权限
+                          final androidImpl = plugin.resolvePlatformSpecificImplementation<
+                              AndroidFlutterLocalNotificationsPlugin>();
+                          if (androidImpl != null) {
+                            await androidImpl.requestNotificationsPermission();
+                          }
+                          // iOS 请求通知权限
+                          final iosImpl = plugin.resolvePlatformSpecificImplementation<
+                              IOSFlutterLocalNotificationsPlugin>();
+                          if (iosImpl != null) {
+                            await iosImpl.requestPermissions(alert: true, badge: true, sound: true);
+                          }
+                        } catch (_) {
+                          // 权限请求失败不阻断流程
+                        }
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('请确保已在系统设置中开启通知权限，否则将无法收到复习提醒'),
+                          const SnackBar(
+                            content: Text('请确保已在系统设置中开启通知权限，否则将无法收到复习提醒'),
                             behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 3),
+                            duration: Duration(seconds: 3),
                           ),
                         );
                       }
@@ -168,7 +195,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                       Row(
                         children: [
                           Icon(Icons.access_time_rounded,
-                              size: 22, color: AppColors.brandPrimary),
+                              size: 22, color: accentColor),
                           SizedBox(width: AppSpacing.md),
                           Text(
                             '提醒时间',
@@ -182,13 +209,13 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: AppColors.brandPrimary.withOpacity(0.1),
+                              color: accentColor.withOpacity(isGlass ? 0.22 : 0.1),
                               borderRadius: AppRadius.radiusMd,
                             ),
                             child: Text(
                               '${_reminderTime.hour.toString().padLeft(2, '0')}:${_reminderTime.minute.toString().padLeft(2, '0')}',
                               style: AppTypography.primary.h3.copyWith(
-                                color: AppColors.brandPrimary,
+                                color: accentColor,
                               ),
                             ),
                           ),
@@ -208,13 +235,17 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                                   horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? AppColors.brandPrimary
-                                    : AppColors.background,
+                                    ? accentColor
+                                    : (isGlass
+                                        ? Colors.white.withOpacity(0.12)
+                                        : AppColors.background),
                                 borderRadius: AppRadius.radiusMd,
                                 border: Border.all(
                                   color: isSelected
-                                      ? AppColors.brandPrimary
-                                      : AppColors.border,
+                                      ? accentColor
+                                      : (isGlass
+                                          ? Colors.white.withOpacity(0.25)
+                                          : AppColors.border),
                                 ),
                               ),
                               child: Text(
@@ -247,7 +278,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                   Row(
                     children: [
                       Icon(Icons.format_list_numbered_rounded,
-                          size: 22, color: AppColors.brandPrimary),
+                          size: 22, color: accentColor),
                       SizedBox(width: AppSpacing.md),
                       Text(
                         '每日复习上限',
@@ -272,7 +303,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                           ),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppColors.brandPrimary.withOpacity(0.08)
+                                ? accentColor.withOpacity(isGlass ? 0.2 : 0.08)
                                 : Colors.transparent,
                             borderRadius: AppRadius.radiusMd,
                           ),
@@ -284,7 +315,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                                     : Icons.radio_button_off_rounded,
                                 size: 20,
                                 color: isSelected
-                                    ? AppColors.brandPrimary
+                                    ? accentColor
                                     : tc.tertiary,
                               ),
                               SizedBox(width: AppSpacing.sm),
@@ -292,7 +323,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                                 '$limit道',
                                 style: AppTypography.primary.body.copyWith(
                                   color: isSelected
-                                      ? AppColors.brandPrimary
+                                      ? accentColor
                                       : tc.primary,
                                   fontWeight:
                                       isSelected ? FontWeight.w600 : null,
@@ -315,7 +346,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
               child: Row(
                 children: [
                   Icon(Icons.animation_rounded,
-                      size: 24, color: AppColors.brandSecondary),
+                      size: 24, color: accentColor2),
                   SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
@@ -340,7 +371,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                   ),
                   Switch.adaptive(
                     value: _eliminateAnimationEnabled,
-                    activeColor: AppColors.brandSecondary,
+                    activeColor: accentColor2,
                     onChanged: (v) =>
                         setState(() => _eliminateAnimationEnabled = v),
                   ),
@@ -351,24 +382,25 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
             SizedBox(height: AppSpacing.lg),
 
             // ─── 免打扰提示 ────────────────────────────
+            // 玻璃拟态：brandPrimary 蓝在深色渐变上偏暗，沿用 accentColor 暖琥珀。
             Container(
               width: double.infinity,
               padding: AppSpacing.cardInnerPadding,
               decoration: BoxDecoration(
-                color: AppColors.brandPrimary.withOpacity(0.06),
+                color: accentColor.withOpacity(isGlass ? 0.18 : 0.06),
                 borderRadius: AppRadius.radiusMd,
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.lightbulb_outline_rounded,
-                      size: 18, color: AppColors.brandPrimary),
+                      size: 18, color: accentColor),
                   SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       '💡 免打扰时段（22:00-07:00）内不会发送提醒通知',
                       style: AppTypography.primary.caption.copyWith(
-                        color: AppColors.brandPrimary,
+                        color: accentColor,
                       ),
                     ),
                   ),

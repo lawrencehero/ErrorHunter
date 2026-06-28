@@ -24,7 +24,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthUser> verifyOtp({
     required String phone,
     required String otp,
-    required String grade,
+    String? grade,
   }) async {
     final result = await _dataSource.verifyOtp(
       phone: phone,

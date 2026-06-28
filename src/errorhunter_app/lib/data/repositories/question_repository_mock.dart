@@ -4,6 +4,7 @@ library;
 
 import '../../domain/repositories/question_repository.dart';
 import '../../features/question/models/question_model.dart';
+import '../../features/question/models/ocr_result.dart';
 import '../mock/mock_question_data_source.dart';
 
 /// Question Repository 的 Mock 实现
@@ -80,8 +81,8 @@ class QuestionRepositoryMock implements QuestionRepository {
   }
 
   @override
-  Future<String> ocrImage(String imagePath) async {
+  Future<OcrResult> ocrImage(String imagePath) async {
     await Future.delayed(const Duration(seconds: 2));
-    return _dataSource.getMockOcrResult();
+    return OcrResult(text: _dataSource.getMockOcrResult());
   }
 }

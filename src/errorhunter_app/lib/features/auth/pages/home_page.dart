@@ -9,14 +9,18 @@ import 'package:go_router/go_router.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/gradients.dart';
-import '../../../theme/radius.dart';
+
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
 import '../../../theme/app_theme_mode.dart';
 import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/loading/skeleton_list.dart';
-import '../bloc/auth_bloc.dart';
-import '../bloc/auth_state.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/bloc/auth_state.dart';
+import '../../report/bloc/report_bloc.dart';
+import '../../report/bloc/report_event.dart';
+import '../../report/bloc/report_state.dart';
+import '../../report/models/dashboard_model.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -26,46 +30,212 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  bool _isLoading = true;
-
-  final int _streakDays = 12;
-  final int _pendingReviewCount = 8;
-  final int _totalQuestions = 156;
-  final int _eliminatedCount = 98;
-  final double _eliminationRate = 0.628;
-
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() => _isLoading = false);
-    });
+    context.read<ReportBloc>().add(const LoadDashboard());
   }
 
-  String get _userName {
-    final state = context.read<AuthBloc>().state;
-    if (state is Authenticated) return state.user.nickname;
+  String _getUserName(DashboardData? dashboard) {
+    // 优先使用 dashboard 中的昵称，fallback 到 AuthBloc
+    if (dashboard != null && dashboard.nickname.isNotEmpty) {
+      return dashboard.nickname;
+    }
+    final authState = context.read<AuthBloc>().state;
+    if (authState is Authenticated) return authState.user.nickname;
     return '同学';
   }
 
   @override
   Widget build(BuildContext context) {
-    final ext = context.themeExt;
-    final isGlass = ext.headerStyle == HeaderStyle.transparent;
+    return BlocBuilder<ReportBloc, ReportState>(
+      builder: (context, state) {
+        final ext = context.themeExt;
+        final isGlass = ext.isDarkBackground;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: _isLoading
-          ? _buildSkeleton()
-          : isGlass
-              ? _buildScrollableContent(ext, isGlass)
-              : _buildGamifiedLayout(ext),
+        if (state is ReportLoading || state is ReportInitial) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: _buildSkeleton(),
+          );
+        }
+
+        if (state is ReportError) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: _buildErrorView(state.message),
+          );
+        }
+
+        if (state is DashboardLoaded) {
+          final dashboard = state.dashboard;
+          final isNewUser = dashboard.totalQuestions == 0;
+
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: isNewUser
+                ? _buildEmptyState(ext, isGlass, dashboard)
+                : isGlass
+                    ? _buildScrollableContent(ext, isGlass, dashboard)
+                    : _buildGamifiedLayout(ext, dashboard),
+          );
+        }
+
+        // 其他未知状态 → 骨架屏
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: _buildSkeleton(),
+        );
+      },
+    );
+  }
+
+  // ─── 错误视图 ──────────────────────────────────────────────
+
+  Widget _buildErrorView(String message) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline_rounded,
+              size: 48, color: Colors.white.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 15, fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: () => context.read<ReportBloc>().add(const LoadDashboard()),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                ),
+                child: const Text('重新加载',
+                  style: TextStyle(
+                    color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── 空状态引导（新用户） ───────────────────────────────────
+
+  Widget _buildEmptyState(AppThemeExtension ext, bool isGlass, DashboardData dashboard) {
+    final userName = _getUserName(dashboard);
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + AppSpacing.base,
+        bottom: AppSpacing.xxl,
+        left: AppSpacing.base,
+        right: AppSpacing.base,
+      ),
+      child: Column(
+        children: [
+          // 问候
+          if (isGlass) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Hi，$userName 👋',
+                    style: AppTypography.primary.h1.copyWith(
+                      color: Colors.white, fontSize: 22,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: AppSpacing.base),
+          ],
+          // 空状态卡片
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(32),
+            decoration: isGlass
+                ? BoxDecoration(
+                    color: Colors.white.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.18)),
+                  )
+                : BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2)),
+                      BoxShadow(color: AppColors.brandPrimaryDark, offset: const Offset(0, 4), blurRadius: 0),
+                    ],
+                  ),
+            child: Column(
+              children: [
+                Text('🎯', style: TextStyle(fontSize: 48)),
+                const SizedBox(height: 16),
+                Text('欢迎加入错题猎手！',
+                  style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w800,
+                    color: isGlass ? Colors.white : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text('还没有错题记录哦，快去添加你的第一道错题吧！',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w500,
+                    color: isGlass ? Colors.white.withOpacity(0.7) : AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                GestureDetector(
+                  onTap: () => context.go(Routes.addQuestion),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      gradient: AppGradients.primary,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: isGlass ? null : [
+                        BoxShadow(color: AppColors.brandPrimaryDark, offset: const Offset(0, 4), blurRadius: 0),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.add_a_photo_rounded, color: Colors.white, size: 22),
+                        const SizedBox(width: 6),
+                        Text('拍照录入错题',
+                          style: AppTypography.primary.button.copyWith(
+                            color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   // ─── 游戏化布局：固定蓝色顶栏 + 下方滚动内容 ──────────────
 
-  Widget _buildGamifiedLayout(AppThemeExtension ext) {
+  Widget _buildGamifiedLayout(AppThemeExtension ext, DashboardData dashboard) {
+    final userName = _getUserName(dashboard);
     final topPadding = MediaQuery.of(context).padding.top;
     return Column(
       children: [
@@ -88,9 +258,9 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Hi，$_userName 👋',
+                        'Hi，$userName 👋',
                         style: AppTypography.primary.h1.copyWith(
-                          color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800,
+                          color: Colors.white,
                         ),
                       ),
                     ),
@@ -106,8 +276,10 @@ class _HomePageState extends State<HomePage> {
                         children: [
                           const Text('🔥', style: TextStyle(fontSize: 16)),
                           const SizedBox(width: 4),
-                          Text('$_streakDays天',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                          Text('${dashboard.streakDays}天',
+                            style: AppTypography.primary.caption.copyWith(
+                              color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15,
+                            ),
                           ),
                         ],
                       ),
@@ -130,15 +302,15 @@ class _HomePageState extends State<HomePage> {
             ),
             child: Column(
               children: [
-                _buildStreakCard(ext, false),
+                _buildStreakCard(ext, false, dashboard),
                 SizedBox(height: AppSpacing.base),
-                _buildTaskCard(ext, false),
+                _buildTaskCard(ext, false, dashboard),
                 SizedBox(height: AppSpacing.base),
-                _buildStatsRow(ext, false),
+                _buildStatsRow(ext, false, dashboard),
                 SizedBox(height: AppSpacing.base),
-                _buildKnowledgeSection(ext, false),
+                _buildKnowledgeSection(ext, false, dashboard),
                 SizedBox(height: AppSpacing.base),
-                _buildWeekCard(ext, false),
+                _buildWeekCard(ext, false, dashboard),
               ],
             ),
           ),
@@ -149,7 +321,8 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 游戏化蓝色顶栏 ───────────────────────────────────────
 
-  Widget _buildGamifiedHeader() {
+  Widget _buildGamifiedHeader(DashboardData dashboard) {
+    final userName = _getUserName(dashboard);
     return Container(
       height: 200,
       decoration: BoxDecoration(
@@ -167,9 +340,9 @@ class _HomePageState extends State<HomePage> {
             children: [
               Expanded(
                 child: Text(
-                  'Hi，$_userName 👋',
+                  'Hi，$userName 👋',
                   style: AppTypography.primary.h1.copyWith(
-                    color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -185,8 +358,10 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     const Text('🔥', style: TextStyle(fontSize: 16)),
                     const SizedBox(width: 4),
-                    Text('$_streakDays天',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                    Text('${dashboard.streakDays}天',
+                      style: AppTypography.primary.caption.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15,
+                      ),
                     ),
                   ],
                 ),
@@ -207,7 +382,8 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 可滚动内容 ───────────────────────────────────────────
 
-  Widget _buildScrollableContent(AppThemeExtension ext, bool isGlass) {
+  Widget _buildScrollableContent(AppThemeExtension ext, bool isGlass, DashboardData dashboard) {
+    final userName = _getUserName(dashboard);
     return SingleChildScrollView(
       padding: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + AppSpacing.base,
@@ -219,23 +395,23 @@ class _HomePageState extends State<HomePage> {
         children: [
           // 玻璃拟态顶栏问候
           if (isGlass) ...[
-            _buildGlassTopBar(),
+            _buildGlassTopBar(userName),
             SizedBox(height: AppSpacing.base),
           ],
           // 打卡条
-          _buildStreakCard(ext, isGlass),
+          _buildStreakCard(ext, isGlass, dashboard),
           SizedBox(height: AppSpacing.base),
           // 今日任务
-          _buildTaskCard(ext, isGlass),
+          _buildTaskCard(ext, isGlass, dashboard),
           SizedBox(height: AppSpacing.base),
           // 统计
-          _buildStatsRow(ext, isGlass),
+          _buildStatsRow(ext, isGlass, dashboard),
           SizedBox(height: AppSpacing.base),
           // 薄弱知识点
-          _buildKnowledgeSection(ext, isGlass),
+          _buildKnowledgeSection(ext, isGlass, dashboard),
           SizedBox(height: AppSpacing.base),
           // 周打卡
-          _buildWeekCard(ext, isGlass),
+          _buildWeekCard(ext, isGlass, dashboard),
         ],
       ),
     );
@@ -243,13 +419,15 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 玻璃拟态顶栏 ─────────────────────────────────────────
 
-  Widget _buildGlassTopBar() {
+  Widget _buildGlassTopBar(String userName) {
     return Row(
       children: [
         Expanded(
           child: Text(
-            'Hi，$_userName 👋',
-            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+            'Hi，$userName 👋',
+            style: AppTypography.primary.h1.copyWith(
+              color: Colors.white, fontSize: 22,
+            ),
           ),
         ),
         _glassIcon(Icons.cloud_done_rounded),
@@ -290,7 +468,7 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 打卡条 ───────────────────────────────────────────────
 
-  Widget _buildStreakCard(AppThemeExtension ext, bool isGlass) {
+  Widget _buildStreakCard(AppThemeExtension ext, bool isGlass, DashboardData dashboard) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -329,7 +507,7 @@ class _HomePageState extends State<HomePage> {
                     textBaseline: TextBaseline.alphabetic,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('$_streakDays',
+                      Text('${dashboard.streakDays}',
                         style: TextStyle(
                           color: isGlass ? const Color(0xFFFFB07A) : Colors.white,
                           fontSize: isGlass ? 32 : 36, fontWeight: FontWeight.w800, height: 1.0,
@@ -356,7 +534,7 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 今日任务 ─────────────────────────────────────────────
 
-  Widget _buildTaskCard(AppThemeExtension ext, bool isGlass) {
+  Widget _buildTaskCard(AppThemeExtension ext, bool isGlass, DashboardData dashboard) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -398,7 +576,7 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$_pendingReviewCount',
+                Text('${dashboard.pendingReviewCount}',
                   style: TextStyle(
                     color: isGlass ? Colors.white : AppColors.brandPrimary,
                     fontSize: 56, fontWeight: FontWeight.w800, height: 0.85, letterSpacing: -2,
@@ -431,13 +609,15 @@ class _HomePageState extends State<HomePage> {
                   BoxShadow(color: AppColors.brandPrimaryDark, offset: const Offset(0, 4), blurRadius: 0),
                 ],
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                  SizedBox(width: 6),
+                  const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                  const SizedBox(width: 6),
                   Text('开始复习',
-                    style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+                    style: AppTypography.primary.button.copyWith(
+                      color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
@@ -450,19 +630,26 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 统计行 ───────────────────────────────────────────────
 
-  Widget _buildStatsRow(AppThemeExtension ext, bool isGlass) {
+  Widget _buildStatsRow(AppThemeExtension ext, bool isGlass, DashboardData dashboard) {
+    final eliminationDisplay = (dashboard.eliminationRate / 100 * 100).toStringAsFixed(0);
+    // (值, 标签, 文本色, 背景色, 跳转tab)
     final items = [
-      ('$_totalQuestions', '累计错题', AppColors.textPrimary, const Color(0xFFFFB74D)),
-      ('$_eliminatedCount', '已消灭', AppColors.success, const Color(0xFF81C784)),
-      ('${(_eliminationRate * 100).toStringAsFixed(0)}%', '消灭率', AppColors.brandSecondary, const Color(0xFFCE93D8)),
+      ('${dashboard.totalQuestions}', '累计错题', AppColors.textPrimary, const Color(0xFFFFB74D), 'all'),
+      ('${dashboard.masteredCount}', '已消灭', AppColors.success, const Color(0xFF81C784), 'mastered'),
+      ('$eliminationDisplay%', '消灭率', AppColors.brandSecondary, const Color(0xFFCE93D8), null),
     ];
 
     return Row(
       children: items.map((item) {
+        final tapRoute = item.$5 == null
+            ? null
+            : '${Routes.questions}?tab=${item.$5}';
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(right: item == items.last ? 0 : AppSpacing.sm),
-            child: Container(
+            child: GestureDetector(
+              onTap: tapRoute == null ? null : () => context.go(tapRoute),
+              child: Container(
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
               decoration: isGlass
                   ? BoxDecoration(
@@ -498,6 +685,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ],
               ),
+              ), // GestureDetector
             ),
           ),
         );
@@ -507,13 +695,13 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 薄弱知识点 ───────────────────────────────────────────
 
-  Widget _buildKnowledgeSection(AppThemeExtension ext, bool isGlass) {
-    final kpItems = [
-      ('分数加减法', 12, AppColors.errorKnowledge, '🧠'),
-      ('几何面积计算', 8, AppColors.errorSkill, '✏️'),
-      ('应用题审题', 6, AppColors.errorPsychology, '😰'),
-    ];
-    final maxError = 12;
+  Widget _buildKnowledgeSection(AppThemeExtension ext, bool isGlass, DashboardData dashboard) {
+    final weakItems = dashboard.weakKnowledge;
+    // 知识点颜色循环列表
+    const kpColors = [AppColors.errorKnowledge, AppColors.errorSkill, AppColors.errorPsychology];
+    final maxError = weakItems.isNotEmpty
+        ? weakItems.map((e) => e.count).reduce((a, b) => a > b ? a : b)
+        : 1;
 
     return Container(
       width: double.infinity,
@@ -557,55 +745,74 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 14),
-          ...kpItems.asMap().entries.map((e) {
-            final i = e.key;
-            final (name, count, color, emoji) = e.value;
-            return Padding(
-              padding: EdgeInsets.only(bottom: i < kpItems.length - 1 ? 12 : 0),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                    alignment: Alignment.center,
-                    child: Text('${i + 1}',
-                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(name,
-                          style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w600,
-                            color: isGlass ? Colors.white.withOpacity(0.9) : AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: count / maxError,
-                            minHeight: 8,
-                            backgroundColor: isGlass
-                                ? Colors.white.withOpacity(0.1)
-                                : color.withOpacity(0.12),
-                            valueColor: AlwaysStoppedAnimation(color),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text('$count题',
-                    style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700),
-                  ),
-                ],
+          if (weakItems.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('暂无薄弱知识点，继续保持！💪',
+                style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500,
+                  color: isGlass ? Colors.white.withOpacity(0.6) : AppColors.textTertiary,
+                ),
               ),
-            );
-          }),
+            )
+          else
+            ...weakItems.asMap().entries.map((e) {
+              final i = e.key;
+              final item = e.value;
+              final color = kpColors[i % kpColors.length];
+              final kpRoute = (item.id == null || item.id!.isEmpty)
+                  ? null
+                  : '${Routes.questions}?kp=${item.id}';
+              return GestureDetector(
+                onTap: kpRoute == null ? null : () => context.go(kpRoute),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: i < weakItems.length - 1 ? 12 : 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32, height: 32,
+                      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                      alignment: Alignment.center,
+                      child: Text('${i + 1}',
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.name,
+                            style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600,
+                              color: isGlass ? Colors.white.withOpacity(0.9) : AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: maxError > 0 ? item.count / maxError : 0,
+                              minHeight: 8,
+                              backgroundColor: isGlass
+                                  ? Colors.white.withOpacity(0.1)
+                                  : color.withOpacity(0.12),
+                              valueColor: AlwaysStoppedAnimation(color),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text('${item.count}题',
+                      style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -613,11 +820,15 @@ class _HomePageState extends State<HomePage> {
 
   // ─── 周打卡 ───────────────────────────────────────────────
 
-  Widget _buildWeekCard(AppThemeExtension ext, bool isGlass) {
+  Widget _buildWeekCard(AppThemeExtension ext, bool isGlass, DashboardData dashboard) {
     const labels = ['一', '二', '三', '四', '五', '六', '日'];
-    // TODO: 后续应从 API 获取真实打卡数据
     final today = DateTime.now().weekday; // 1=Mon, 7=Sun
-    final completed = List.generate(7, (i) => i < today - 1); // 今天之前的都已完成
+    // 使用后端返回的本周打卡数据（周一至周日）；未返回的天视为未打卡
+    final weeklyFromApi = dashboard.weeklyCompleted;
+    final completed = List.generate(7, (i) {
+      if (i < weeklyFromApi.length) return weeklyFromApi[i];
+      return false;
+    });
 
     return Container(
       width: double.infinity,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 import '../models/question_model.dart';
 
@@ -19,11 +20,12 @@ class SolutionSteps extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
     if (steps.isEmpty) {
       return Text(
         '暂无解题过程',
         style: AppTypography.primary.caption.copyWith(
-          color: AppColors.textTertiary,
+          color: tc.tertiary,
         ),
       );
     }
@@ -34,7 +36,7 @@ class SolutionSteps extends StatelessWidget {
         Text(
           '解题过程',
           style: AppTypography.primary.h3.copyWith(
-            color: AppColors.textPrimary,
+            color: tc.primary,
           ),
         ),
         SizedBox(height: AppSpacing.md),
@@ -51,6 +53,11 @@ class _StepItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    // 语义色玻璃下提亮
+    final dangerColor = isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
     return Padding(
       padding: EdgeInsets.only(bottom: AppSpacing.sm),
       child: Row(
@@ -62,15 +69,15 @@ class _StepItem extends StatelessWidget {
             height: 28,
             decoration: BoxDecoration(
               color: step.isErrorStep
-                  ? AppColors.danger.withOpacity(0.1)
-                  : AppColors.brandPrimary.withOpacity(0.1),
+                  ? dangerColor.withOpacity(isGlass ? 0.15 : 0.1)
+                  : accent.withOpacity(isGlass ? 0.2 : 0.1),
               borderRadius: AppRadius.radiusFull,
             ),
             alignment: Alignment.center,
             child: Text(
               '${step.stepNumber}',
               style: AppTypography.primary.caption.copyWith(
-                color: step.isErrorStep ? AppColors.danger : AppColors.brandPrimary,
+                color: step.isErrorStep ? dangerColor : accent,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -85,11 +92,11 @@ class _StepItem extends StatelessWidget {
               ),
               decoration: BoxDecoration(
                 color: step.isErrorStep
-                    ? AppColors.danger.withOpacity(0.03)
+                    ? dangerColor.withOpacity(isGlass ? 0.08 : 0.03)
                     : Colors.transparent,
                 borderRadius: AppRadius.radiusMd,
                 border: step.isErrorStep
-                    ? Border.all(color: AppColors.danger.withOpacity(0.2))
+                    ? Border.all(color: dangerColor.withOpacity(isGlass ? 0.3 : 0.2))
                     : null,
               ),
               child: Row(
@@ -99,14 +106,14 @@ class _StepItem extends StatelessWidget {
                       step.content,
                       style: AppTypography.primary.body.copyWith(
                         color: step.isErrorStep
-                            ? AppColors.danger
-                            : AppColors.textPrimary,
+                            ? dangerColor
+                            : tc.primary,
                         fontWeight: step.isErrorStep ? FontWeight.w500 : FontWeight.w400,
                       ),
                     ),
                   ),
                   if (step.isErrorStep)
-                    Icon(Icons.error_outline, size: 16, color: AppColors.danger),
+                    Icon(Icons.error_outline, size: 16, color: dangerColor),
                 ],
               ),
             ),

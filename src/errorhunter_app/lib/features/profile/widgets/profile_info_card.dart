@@ -6,6 +6,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/avatar.dart';
 import '../../../widgets/common/cards/base_card.dart';
 
@@ -26,6 +27,13 @@ class ProfileInfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    // 玻璃拟态：深色渐变背景上 brandPrimary 蓝对比度不足，
+    // 改用暖琥珀强调色 + success 提亮（与 profile_page.dart 一致）。
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    final successColor =
+        isGlass ? const Color(0xFF81C784) : AppColors.success;
     return EHBaseCard(
       child: Row(
         children: [
@@ -42,7 +50,7 @@ class ProfileInfoCard extends StatelessWidget {
                 Text(
                   nickname,
                   style: AppTypography.primary.h2.copyWith(
-                    color: AppColors.textPrimary,
+                    color: tc.primary,
                   ),
                 ),
                 SizedBox(height: AppSpacing.xs),
@@ -52,14 +60,14 @@ class ProfileInfoCard extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.brandPrimary.withOpacity(0.1),
+                    color: accent.withOpacity(isGlass ? 0.22 : 0.1),
                     borderRadius: AppRadius.radiusSm,
                   ),
                   child: Text(
                     _gradeLabel(grade),
                     style: AppTypography.primary.caption.copyWith(
                       fontSize: 12,
-                      color: AppColors.brandPrimary,
+                      color: accent,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -68,7 +76,7 @@ class ProfileInfoCard extends StatelessWidget {
                 Text(
                   '已消灭 $eliminatedCount 道 🎯',
                   style: AppTypography.primary.body.copyWith(
-                    color: AppColors.success,
+                    color: successColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

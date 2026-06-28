@@ -13,6 +13,9 @@ class DatabaseHelper {
   static const String _dbName = 'errorhunter.db';
   static const int _dbVersion = 1;
 
+  /// 数据库文件名（公开，供存储统计等场景读取文件大小）
+  static const String dbName = _dbName;
+
   // ─── Table Names ────────────────────────────────────────
   static const String tableLocalQuestions = 'local_questions';
   static const String tableLocalImages = 'local_images';

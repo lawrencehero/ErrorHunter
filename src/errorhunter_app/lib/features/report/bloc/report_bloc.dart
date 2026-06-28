@@ -11,8 +11,23 @@ class ReportBloc extends Bloc<ReportEvent, ReportState> {
   final ReportRepository _reportRepository;
 
   ReportBloc(this._reportRepository) : super(const ReportInitial()) {
+    on<LoadDashboard>(_onLoadDashboard);
     on<LoadWeeklyReports>(_onLoadWeeklyReports);
     on<LoadWeeklyReportDetail>(_onLoadWeeklyReportDetail);
+  }
+
+  Future<void> _onLoadDashboard(
+    LoadDashboard event,
+    Emitter<ReportState> emit,
+  ) async {
+    emit(const ReportLoading());
+
+    try {
+      final dashboard = await _reportRepository.getDashboard();
+      emit(DashboardLoaded(dashboard));
+    } catch (e) {
+      emit(ReportError('加载首页数据失败：${e.toString()}'));
+    }
   }
 
   Future<void> _onLoadWeeklyReports(

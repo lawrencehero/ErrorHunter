@@ -12,6 +12,7 @@ import '../../../theme/app_theme_mode.dart';
 import '../../../theme/theme_manager.dart';
 import '../chips/error_category_chip.dart';
 import '../chips/status_chip.dart';
+import '../../../features/question/widgets/math_text.dart';
 
 /// 错题卡片数据模型
 class EHQuestionCardData {
@@ -143,12 +144,14 @@ class _EHQuestionCardState extends State<EHQuestionCard> {
                             ],
                           ),
                           SizedBox(height: AppSpacing.xs),
-                          // 标题
-                          Text(
+                          // 标题（渲染 LaTeX 公式，最多 2 行）
+                          MathText(
                             data.title,
                             maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                             style: AppTypography.primary.h3.copyWith(
+                              color: tc.primary,
+                            ),
+                            mathStyle: AppTypography.primary.h3.copyWith(
                               color: tc.primary,
                             ),
                           ),

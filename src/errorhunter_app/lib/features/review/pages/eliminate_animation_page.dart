@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../bloc/review_bloc.dart';
 import '../bloc/review_event.dart';
 import '../widgets/confetti_painter.dart';
@@ -135,6 +136,10 @@ class _EliminateAnimationPageState extends State<EliminateAnimationPage>
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    // 计数强调色：玻璃下用亮消灭绿保证在深色渐变上的可读性。
+    final countColor = isGlass ? const Color(0xFF81C784) : AppColors.success;
     return GestureDetector(
       onTap: _skipAnimation,
       child: Scaffold(
@@ -210,7 +215,7 @@ class _EliminateAnimationPageState extends State<EliminateAnimationPage>
                           child: Text(
                             '又消灭一道错题！🎉',
                             style: AppTypography.primary.h2.copyWith(
-                              color: AppColors.textPrimary,
+                              color: tc.primary,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -232,17 +237,20 @@ class _EliminateAnimationPageState extends State<EliminateAnimationPage>
                         Text(
                           '已消灭 ',
                           style: AppTypography.primary.body.copyWith(
-                            color: AppColors.textSecondary,
+                            color: tc.secondary,
                           ),
                         ),
                         CountUpText(
                           value: widget.totalEliminated,
                           duration: const Duration(milliseconds: 800),
+                          style: AppTypography.primary.number.copyWith(
+                            color: countColor,
+                          ),
                         ),
                         Text(
                           ' 道',
                           style: AppTypography.primary.body.copyWith(
-                            color: AppColors.textSecondary,
+                            color: tc.secondary,
                           ),
                         ),
                       ],
@@ -268,7 +276,7 @@ class _EliminateAnimationPageState extends State<EliminateAnimationPage>
                   child: Text(
                     '点击任意位置跳过',
                     style: AppTypography.primary.caption.copyWith(
-                      color: AppColors.textTertiary,
+                      color: tc.tertiary,
                     ),
                   ),
                 ),

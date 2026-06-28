@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 import '../models/question_model.dart';
 
@@ -88,6 +89,9 @@ class ErrorCategorySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     final options = [
       ..._options,
       if (showUnknown)
@@ -105,7 +109,7 @@ class ErrorCategorySelector extends StatelessWidget {
         Text(
           '这道题为什么错了？',
           style: AppTypography.primary.h3.copyWith(
-            color: AppColors.textPrimary,
+            color: tc.primary,
           ),
         ),
         SizedBox(height: AppSpacing.md),
@@ -116,6 +120,8 @@ class ErrorCategorySelector extends StatelessWidget {
                 isSelected: selected == option.category,
                 isRecommended: recommendedCategory == option.category,
                 onTap: () => onSelected(option.category),
+                isGlass: isGlass,
+                accent: accent,
               ),
             )),
 
@@ -125,7 +131,7 @@ class ErrorCategorySelector extends StatelessWidget {
           Text(
             '细分原因（最多选2个）',
             style: AppTypography.primary.caption.copyWith(
-              color: AppColors.textSecondary,
+              color: tc.secondary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -154,18 +160,20 @@ class ErrorCategorySelector extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? AppColors.brandPrimary.withOpacity(0.1)
-                        : Colors.white,
+                        ? accent.withOpacity(isGlass ? 0.2 : 0.1)
+                        : (isGlass ? Colors.white.withOpacity(0.12) : Colors.white),
                     borderRadius: AppRadius.radiusFull,
                     border: Border.all(
-                      color: isSelected ? AppColors.brandPrimary : AppColors.border,
+                      color: isSelected
+                          ? accent
+                          : (isGlass ? Colors.white.withOpacity(0.25) : AppColors.border),
                       width: isSelected ? 1.5 : 1,
                     ),
                   ),
                   child: Text(
                     sub,
                     style: AppTypography.primary.caption.copyWith(
-                      color: isSelected ? AppColors.brandPrimary : AppColors.textSecondary,
+                      color: isSelected ? accent : tc.secondary,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
@@ -186,16 +194,25 @@ class _CategoryCard extends StatelessWidget {
     required this.isSelected,
     required this.isRecommended,
     required this.onTap,
+    required this.isGlass,
+    required this.accent,
   });
 
   final ErrorCategoryOption option;
   final bool isSelected;
   final bool isRecommended;
   final VoidCallback onTap;
+  final bool isGlass;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
     final categoryColor = AppColors.errorCategoryColor(option.category.code);
+    // 玻璃下错因色提亮，避免深紫/深蓝叠玻璃渐变不可读
+    final labelColor = isGlass
+        ? _lightenCategoryColor(categoryColor)
+        : categoryColor;
 
     return GestureDetector(
       onTap: onTap,
@@ -204,11 +221,13 @@ class _CategoryCard extends StatelessWidget {
         padding: AppSpacing.cardPadding,
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.brandPrimary.withOpacity(0.05)
-              : AppColors.surface,
+              ? accent.withOpacity(isGlass ? 0.12 : 0.05)
+              : (isGlass ? Colors.white.withOpacity(0.12) : AppColors.surface),
           borderRadius: AppRadius.radiusLg,
           border: Border.all(
-            color: isSelected ? AppColors.brandPrimary : AppColors.border,
+            color: isSelected
+                ? accent
+                : (isGlass ? Colors.white.withOpacity(0.25) : AppColors.border),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -230,7 +249,7 @@ class _CategoryCard extends StatelessWidget {
                       Text(
                         option.shortLabel,
                         style: AppTypography.primary.h3.copyWith(
-                          color: AppColors.textPrimary,
+                          color: tc.primary,
                         ),
                       ),
                       if (isRecommended) ...[
@@ -242,7 +261,7 @@ class _CategoryCard extends StatelessWidget {
                   Text(
                     option.fullLabel,
                     style: AppTypography.primary.caption.copyWith(
-                      color: categoryColor,
+                      color: labelColor,
                     ),
                   ),
                 ],
@@ -254,7 +273,7 @@ class _CategoryCard extends StatelessWidget {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: AppColors.brandPrimary,
+                  color: accent,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -267,5 +286,11 @@ class _CategoryCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 玻璃下将过深的错因色提亮，保证叠渐变背景可读
+  Color _lightenCategoryColor(Color c) {
+    // 简易提亮：与白色混合 35%
+    return Color.alphaBlend(Colors.white.withOpacity(0.35), c);
   }
 }

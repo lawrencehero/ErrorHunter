@@ -45,7 +45,8 @@ class ErrorHunterApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<AuthBloc>(create: (_) => sl<AuthBloc>()),
+        // AuthBloc 用 .value + singleton，与 app_router.dart 的 redirect 共享同一实例
+        BlocProvider<AuthBloc>.value(value: sl<AuthBloc>()),
         BlocProvider<QuestionBloc>(create: (_) => sl<QuestionBloc>()),
         BlocProvider<ReviewBloc>(create: (_) => sl<ReviewBloc>()),
         BlocProvider<ReportBloc>(create: (_) => sl<ReportBloc>()),
@@ -83,6 +84,11 @@ class ErrorHunterApp extends StatelessWidget {
       case AppThemeMode.glassmorphism:
         return base.copyWith(
           scaffoldBackgroundColor: Colors.transparent,
+          // 路由转场(MaterialPageRoute)首帧以 canvasColor 绘制，
+          // 默认白色会在进入子页面瞬间闪白底；玻璃主题下置透明，
+          // 让全局 AppBackground 渐变成为唯一背景。
+          canvasColor: Colors.transparent,
+          shadowColor: Colors.transparent,
           extensions: [ext],
           // 文字颜色：深色背景上用白色系
           textTheme: base.textTheme.apply(

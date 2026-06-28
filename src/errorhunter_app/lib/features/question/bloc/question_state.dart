@@ -2,6 +2,7 @@
 library;
 
 import 'package:equatable/equatable.dart';
+import '../models/ocr_result.dart';
 import '../models/question_model.dart';
 
 /// Question State 基类
@@ -32,6 +33,7 @@ class QuestionListLoaded extends QuestionState {
     this.currentPage = 1,
     this.filterStatus,
     this.filterCategory,
+    this.filterKnowledgePoint,
     this.searchKeyword = '',
   });
 
@@ -40,6 +42,7 @@ class QuestionListLoaded extends QuestionState {
   final int currentPage;
   final QuestionStatus? filterStatus;
   final ErrorCategory? filterCategory;
+  final String? filterKnowledgePoint;
   final String searchKeyword;
 
   @override
@@ -49,6 +52,7 @@ class QuestionListLoaded extends QuestionState {
         currentPage,
         filterStatus,
         filterCategory,
+        filterKnowledgePoint,
         searchKeyword,
       ];
 }
@@ -87,6 +91,16 @@ class QuestionAdded extends QuestionState {
   List<Object?> get props => [question.id];
 }
 
+/// 添加失败（UI 弹出提示，不导航）
+class QuestionAddFailed extends QuestionState {
+  const QuestionAddFailed([this.message = '保存失败，请重试']);
+
+  final String message;
+
+  @override
+  List<Object?> get props => [message];
+}
+
 // ─── OCR States ───────────────────────────────────────────────
 
 /// OCR 识别中
@@ -96,12 +110,15 @@ class OcrProcessing extends QuestionState {
 
 /// OCR 识别完成
 class OcrCompleted extends QuestionState {
-  const OcrCompleted(this.text);
+  const OcrCompleted({required this.text, this.imageUrl = '', this.figures = const []});
 
   final String text;
+  /// 上传到对象存储后的图片 URL，保存错题时用
+  final String imageUrl;
+  final List<OcrFigure> figures;
 
   @override
-  List<Object?> get props => [text];
+  List<Object?> get props => [text, imageUrl, figures];
 }
 
 /// OCR 识别失败

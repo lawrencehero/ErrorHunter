@@ -85,6 +85,7 @@ CREATE TABLE users (
     mastered_animation   BOOLEAN        NOT NULL DEFAULT TRUE,
     daily_review_limit   INT            NOT NULL DEFAULT 20,
     last_active_at       TIMESTAMPTZ,
+    last_review_date     DATE,
     created_at           TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     updated_at           TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     deleted_at           TIMESTAMPTZ,
@@ -118,7 +119,7 @@ CREATE TABLE questions (
     solution_steps          JSONB,
     error_step_index        INT,
     error_category          error_category_enum NOT NULL,
-    error_sub_category      VARCHAR(32),
+    sub_categories          JSONB DEFAULT '[]',
     custom_tags             JSONB,
     master_count            INT                 NOT NULL DEFAULT 0,
     review_round            INT                 NOT NULL DEFAULT 1,
@@ -227,12 +228,14 @@ CREATE TABLE weekly_reports (
     review_accuracy     DECIMAL(5,2)   NOT NULL DEFAULT 0.00,
     prev_week_new       INT,
     prev_week_mastered  INT,
-    top_error_category  error_category_enum,
-    weak_knowledge_top  JSONB,
+    top_error_category             error_category_enum,
+    top_error_category_percentage  DECIMAL(5,2)  NOT NULL DEFAULT 0.00,
+    weak_knowledge_top             JSONB,
     created_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
 
     CONSTRAINT fk_report_user FOREIGN KEY (user_id) REFERENCES users(id),
     CONSTRAINT uk_report_user_week UNIQUE (user_id, week_number),
+    CONSTRAINT uk_report_user_week_start UNIQUE (user_id, week_start),
     CONSTRAINT chk_rpt_dates CHECK (week_end > week_start),
     CONSTRAINT chk_rpt_accuracy CHECK (review_accuracy BETWEEN 0 AND 100),
     CONSTRAINT chk_rpt_counts CHECK (
@@ -243,6 +246,7 @@ CREATE TABLE weekly_reports (
 COMMENT ON TABLE weekly_reports IS '学情周报表，每周日20:00自动生成';
 COMMENT ON COLUMN weekly_reports.week_number IS '周编号YYYYWW';
 COMMENT ON COLUMN weekly_reports.review_accuracy IS '本周复习正确率(%)';
+COMMENT ON COLUMN weekly_reports.top_error_category_percentage IS '本周最多错因占新建错题比例(%)';
 COMMENT ON COLUMN weekly_reports.weak_knowledge_top IS '薄弱知识点TOP3 JSON数组';
 
 -- sync_queue 离线同步队列表

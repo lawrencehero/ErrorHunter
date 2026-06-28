@@ -32,6 +32,19 @@ func (r *WeeklyReportRepository) FindByID(ctx context.Context, id int64) (*model
 	return &report, nil
 }
 
+// FindByUserAndWeek 按 (user_id, week_start) 查重，用于周报生成幂等。
+// weekStart 为周一 00:00（上海时区）；查询时按 DATE 比较，忽略时分秒。
+func (r *WeeklyReportRepository) FindByUserAndWeek(ctx context.Context, userID int64, weekStart time.Time) (*model.WeeklyReport, error) {
+	var report model.WeeklyReport
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND week_start = ?", userID, weekStart).
+		First(&report).Error
+	if err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
 // ListByUser 用户周报列表
 func (r *WeeklyReportRepository) ListByUser(ctx context.Context, userID int64, page, pageSize int) ([]model.WeeklyReport, int64, error) {
 	var total int64
@@ -155,7 +168,39 @@ func (r *WeeklyReportRepository) GetWeeklyTrend(ctx context.Context, userID int6
 	return items, nil
 }
 
-// WeakKnowledgeItem 薄弱知识点项
+// GetWeeklyCompleted 本周（周一至周日）每天的打卡状态。
+// 只有当天确实存在复习记录（review_records）才视为已打卡；
+// 仅新增错题不计入打卡。今天若未复习则为 false；今天之后的未来天为 false。
+func (r *WeeklyReportRepository) GetWeeklyCompleted(ctx context.Context, userID int64) ([]bool, error) {
+	now := time.Now()
+	// 本周周一（Go: Sunday=0）
+	monday := now.AddDate(0, 0, -((int(now.Weekday())+6)%7))
+	weekStart := time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, now.Location())
+	weekEnd := weekStart.AddDate(0, 0, 7)
+
+	// 本周有复习记录的日期（仅复习算打卡，录题不算）
+	var reviewDates []string
+	r.db.WithContext(ctx).Table("review_records").
+		Select("DISTINCT TO_CHAR(reviewed_at, 'YYYY-MM-DD')").
+		Where("user_id = ? AND reviewed_at >= ? AND reviewed_at < ?", userID, weekStart, weekEnd).
+		Scan(&reviewDates)
+
+	active := make(map[string]bool, 7)
+	for _, d := range reviewDates {
+		active[d] = true
+	}
+
+	todayStr := now.Format("2006-01-02")
+	completed := make([]bool, 7)
+	for i := 0; i < 7; i++ {
+		day := weekStart.AddDate(0, 0, i).Format("2006-01-02")
+		if day > todayStr {
+			continue // 未来天
+		}
+		completed[i] = active[day]
+	}
+	return completed, nil
+}
 type WeakKnowledgeItem struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`

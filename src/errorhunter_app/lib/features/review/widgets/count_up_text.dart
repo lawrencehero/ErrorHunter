@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 
 /// 数字递增动画文字
@@ -25,6 +26,11 @@ class CountUpText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    // 默认成功色：玻璃下提亮为浅消灭绿，保证深色渐变背景上可读
+    // （调用方仍可显式传入 style 覆盖，如 eliminate_animation_page.dart）。
+    final successColor =
+        isGlass ? const Color(0xFF81C784) : AppColors.success;
     return TweenAnimationBuilder<int>(
       tween: IntTween(begin: 0, end: value),
       duration: duration,
@@ -34,7 +40,7 @@ class CountUpText extends StatelessWidget {
           '$prefix$currentValue$suffix',
           style: style ??
               AppTypography.primary.number.copyWith(
-                color: AppColors.success,
+                color: successColor,
               ),
         );
       },

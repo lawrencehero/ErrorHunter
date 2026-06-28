@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/cards/stat_card.dart';
 
 /// 四宫格统计
@@ -32,6 +33,7 @@ class ReportStatGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -45,7 +47,8 @@ class ReportStatGrid extends StatelessWidget {
           value: '$newCount',
           trend: _trend(newVsLastWeek),
           trendValue: _formatTrend(newVsLastWeek),
-          valueColor: AppColors.brandPrimary,
+          valueColor: isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary,
+          accentColor: isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary,
           icon: Icons.add_circle_outline_rounded,
         ),
         EHStatCard(
@@ -53,7 +56,8 @@ class ReportStatGrid extends StatelessWidget {
           value: '$eliminatedCount',
           trend: _trend(eliminatedVsLastWeek),
           trendValue: _formatTrend(eliminatedVsLastWeek),
-          valueColor: AppColors.success,
+          valueColor: isGlass ? const Color(0xFF81C784) : AppColors.success,
+          accentColor: isGlass ? const Color(0xFF81C784) : AppColors.success,
           icon: Icons.check_circle_outline_rounded,
         ),
         EHStatCard(
@@ -61,7 +65,8 @@ class ReportStatGrid extends StatelessWidget {
           value: '$reviewCount',
           trend: _trend(reviewVsLastWeek),
           trendValue: _formatTrend(reviewVsLastWeek),
-          valueColor: AppColors.brandSecondary,
+          valueColor: isGlass ? const Color(0xFFFFAB91) : AppColors.brandSecondary,
+          accentColor: isGlass ? const Color(0xFFFFAB91) : AppColors.brandSecondary,
           icon: Icons.refresh_rounded,
         ),
         EHStatCard(
@@ -69,7 +74,8 @@ class ReportStatGrid extends StatelessWidget {
           value: '${accuracyRate.toStringAsFixed(0)}%',
           trend: _trendDouble(accuracyVsLastWeek),
           trendValue: _formatTrendDouble(accuracyVsLastWeek, isPercent: true),
-          valueColor: AppColors.warning,
+          valueColor: isGlass ? const Color(0xFFFFCC80) : AppColors.warning,
+          accentColor: isGlass ? const Color(0xFFFFCC80) : AppColors.warning,
           icon: Icons.trending_up_rounded,
         ),
       ],

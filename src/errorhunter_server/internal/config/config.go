@@ -15,6 +15,7 @@ type Config struct {
 	MinIO    MinIOConfig    `mapstructure:"minio"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	OTP      OTPConfig      `mapstructure:"otp"`
+	SMS      SMSConfig      `mapstructure:"sms"`
 	OCR      OCRConfig      `mapstructure:"ocr"`
 	Log      LogConfig      `mapstructure:"log"`
 }
@@ -80,6 +81,9 @@ type OTPConfig struct {
 	DailyLimit      int `mapstructure:"daily_limit"`
 	MaxRetry        int `mapstructure:"max_retry"`
 	LockoutDuration int `mapstructure:"lockout_duration"` // seconds
+	// BypassPhones 验证码白名单：名单内手机号跳过真实短信发送与校验，
+	// 任意验证码均可通过。用于测试/内部账号，生产环境应留空。
+	BypassPhones []string `mapstructure:"bypass_phones"`
 }
 
 type OCRConfig struct {
@@ -93,6 +97,32 @@ type AliyunOCR struct {
 	SecretKey string `mapstructure:"secret_key"`
 	Endpoint  string `mapstructure:"endpoint"`
 }
+
+type SMSConfig struct {
+	Provider     string     `mapstructure:"provider"`     // aliyun, mock
+	Aliyun       AliyunSMS  `mapstructure:"aliyun"`
+}
+
+type AliyunSMS struct {
+	AccessKey     string `mapstructure:"access_key"`
+	SecretKey     string `mapstructure:"secret_key"`
+	Endpoint      string `mapstructure:"endpoint"`
+	SignName      string `mapstructure:"sign_name"`
+	TemplateCode  string `mapstructure:"template_code"`
+	TemplateParam string `mapstructure:"template_param"`
+	CodeLength    int64  `mapstructure:"code_length"`
+	CodeType      int64  `mapstructure:"code_type"`
+	ValidTime     int64  `mapstructure:"valid_time"`
+}
+
+// HasCodeLength 判断是否显式配置了验证码长度
+func (a AliyunSMS) HasCodeLength() bool { return a.CodeLength > 0 }
+
+// HasCodeType 判断是否显式配置了验证码类型
+func (a AliyunSMS) HasCodeType() bool { return a.CodeType > 0 }
+
+// HasValidTime 判断是否显式配置了有效期
+func (a AliyunSMS) HasValidTime() bool { return a.ValidTime > 0 }
 
 type LogConfig struct {
 	Level    string `mapstructure:"level"`

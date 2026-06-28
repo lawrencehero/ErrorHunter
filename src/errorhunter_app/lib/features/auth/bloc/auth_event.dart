@@ -28,15 +28,17 @@ class SendOtp extends AuthEvent {
 }
 
 /// 验证 OTP 并注册/登录
+/// grade 为 null 时走"已注册用户登录"路径（不传 grade 给后端）
+/// grade 非 null 时走"新用户注册"路径（必传 grade 给后端）
 class VerifyOtp extends AuthEvent {
   final String phone;
   final String otp;
-  final String grade; // 年级代码，如 "31", "72"
+  final String? grade; // 年级代码，注册时必填，登录时可空
 
   const VerifyOtp({
     required this.phone,
     required this.otp,
-    required this.grade,
+    this.grade,
   });
 
   @override

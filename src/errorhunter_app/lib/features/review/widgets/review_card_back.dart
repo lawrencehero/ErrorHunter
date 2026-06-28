@@ -7,7 +7,9 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../../question/models/question_model.dart';
+import '../../question/widgets/math_text.dart';
 import '../models/review_report_model.dart';
 import 'self_eval_buttons.dart';
 
@@ -32,25 +34,30 @@ class ReviewCardBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
     return Container(
       width: double.infinity,
       padding: AppSpacing.cardPadding,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: isGlass ? Colors.white.withOpacity(0.12) : AppColors.surface,
         borderRadius: AppRadius.radiusXl,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: isGlass ? Border.all(color: Colors.white.withOpacity(0.25)) : null,
+        boxShadow: isGlass
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ─── 复活检测标签（如有）──────────────────────
-          if (isReviveCheck) _buildReviveBanner(),
+          if (isReviveCheck) _buildReviveBanner(tc),
           if (isReviveCheck) SizedBox(height: AppSpacing.sm),
 
           // ─── 可滚动内容区 ──────────────────────────────
@@ -63,10 +70,13 @@ class ReviewCardBack extends StatelessWidget {
                   if (question.ocrText != null) ...[
                     _SectionLabel(label: '📝 题目'),
                     SizedBox(height: AppSpacing.xs),
-                    Text(
+                    MathText(
                       question.ocrText!,
                       style: AppTypography.primary.body.copyWith(
-                        color: AppColors.textPrimary,
+                        color: tc.primary,
+                      ),
+                      mathStyle: AppTypography.primary.body.copyWith(
+                        color: tc.primary,
                       ),
                     ),
                     SizedBox(height: AppSpacing.base),
@@ -76,21 +86,35 @@ class ReviewCardBack extends StatelessWidget {
                   if (question.correctAnswer != null) ...[
                     _SectionLabel(label: '✅ 正确答案'),
                     SizedBox(height: AppSpacing.xs),
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(AppSpacing.sm),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.08),
-                        borderRadius: AppRadius.radiusMd,
-                      ),
-                      child: Text(
-                        question.correctAnswer!,
-                        style: AppTypography.primary.body.copyWith(
-                          color: AppColors.success,
-                          fontWeight: FontWeight.w600,
+                    if (question.correctAnswer!.trim().isEmpty)
+                      _buildEmptyAnswerHint(tc)
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(AppSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withOpacity(0.08),
+                          borderRadius: AppRadius.radiusMd,
+                        ),
+                        child: MathText(
+                          question.correctAnswer!,
+                          style: AppTypography.primary.body.copyWith(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          mathStyle: AppTypography.primary.body.copyWith(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
+                    SizedBox(height: AppSpacing.md),
+                  ] else ...[
+                    // correctAnswer 为 null（后端未返回该字段）也要提示，
+                    // 否则用户点"显示答案"看不到任何反馈。
+                    _SectionLabel(label: '✅ 正确答案'),
+                    SizedBox(height: AppSpacing.xs),
+                    _buildEmptyAnswerHint(tc),
                     SizedBox(height: AppSpacing.md),
                   ],
 
@@ -113,7 +137,9 @@ class ReviewCardBack extends StatelessWidget {
                                   color: step.isErrorStep
                                       ? AppColors.danger
                                           .withOpacity(0.15)
-                                      : AppColors.brandPrimary
+                                      : (isGlass
+                                          ? const Color(0xFFFFB74D)
+                                          : AppColors.brandPrimary)
                                           .withOpacity(0.1),
                                   shape: BoxShape.circle,
                                 ),
@@ -123,7 +149,9 @@ class ReviewCardBack extends StatelessWidget {
                                       .copyWith(
                                     color: step.isErrorStep
                                         ? AppColors.danger
-                                        : AppColors.brandPrimary,
+                                        : (isGlass
+                                            ? const Color(0xFFFFB74D)
+                                            : AppColors.brandPrimary),
                                     fontWeight: FontWeight.w600,
                                     fontSize: 12,
                                   ),
@@ -137,7 +165,7 @@ class ReviewCardBack extends StatelessWidget {
                                       .copyWith(
                                     color: step.isErrorStep
                                         ? AppColors.danger
-                                        : AppColors.textPrimary,
+                                        : tc.primary,
                                   ),
                                 ),
                               ),
@@ -148,7 +176,8 @@ class ReviewCardBack extends StatelessWidget {
                   ],
 
                   // 你的错误答案
-                  if (question.myAnswer != null) ...[
+                  if (question.myAnswer != null &&
+                      question.myAnswer!.trim().isNotEmpty) ...[
                     _SectionLabel(label: '❌ 你的答案'),
                     SizedBox(height: AppSpacing.xs),
                     Container(
@@ -158,11 +187,14 @@ class ReviewCardBack extends StatelessWidget {
                         color: AppColors.danger.withOpacity(0.08),
                         borderRadius: AppRadius.radiusMd,
                       ),
-                      child: Text(
+                      child: MathText(
                         question.myAnswer!,
                         style: AppTypography.primary.body.copyWith(
                           color: AppColors.danger,
                           decoration: TextDecoration.lineThrough,
+                        ),
+                        mathStyle: AppTypography.primary.body.copyWith(
+                          color: AppColors.danger,
                         ),
                       ),
                     ),
@@ -170,7 +202,7 @@ class ReviewCardBack extends StatelessWidget {
                   ],
 
                   // 错因 + 知识点标签
-                  _buildTags(),
+                  _buildTags(tc, isGlass),
                 ],
               ),
             ),
@@ -190,7 +222,36 @@ class ReviewCardBack extends StatelessWidget {
     );
   }
 
-  Widget _buildReviveBanner() {
+  /// 正确答案为空（null 或空串）时的弱化提示块。
+  /// 用 info 图标 + tertiary 色，避免被误读为"做错了"。
+  Widget _buildEmptyAnswerHint(AppTextThemeColors tc) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: tc.tertiary.withOpacity(0.06),
+        borderRadius: AppRadius.radiusMd,
+        border: Border.all(color: tc.tertiary.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Text('ℹ️', style: TextStyle(fontSize: 14, color: tc.tertiary)),
+          SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              '未设置正确答案',
+              style: AppTypography.primary.body.copyWith(
+                color: tc.tertiary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviveBanner(AppTextThemeColors tc) {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
@@ -221,7 +282,7 @@ class ReviewCardBack extends StatelessWidget {
           Text(
             '这道题消灭已经 $daysSinceLastMastered 天了，来确认一下还记不记得吧！',
             style: AppTypography.primary.caption.copyWith(
-              color: AppColors.textSecondary,
+              color: tc.secondary,
               fontSize: 12,
             ),
           ),
@@ -230,7 +291,8 @@ class ReviewCardBack extends StatelessWidget {
     );
   }
 
-  Widget _buildTags() {
+  Widget _buildTags(AppTextThemeColors tc, bool isGlass) {
+    final kpColor = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Wrap(
       spacing: AppSpacing.sm,
       runSpacing: AppSpacing.sm,
@@ -246,7 +308,7 @@ class ReviewCardBack extends StatelessWidget {
           (kp) => _TagChip(
             emoji: '🏷️',
             label: kp.name,
-            color: AppColors.brandPrimary,
+            color: kpColor,
           ),
         ),
         // 自定义标签
@@ -254,7 +316,7 @@ class ReviewCardBack extends StatelessWidget {
           (tag) => _TagChip(
             emoji: '#',
             label: tag,
-            color: AppColors.textSecondary,
+            color: tc.secondary,
           ),
         ),
       ],
@@ -269,10 +331,11 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
     return Text(
       label,
       style: AppTypography.primary.caption.copyWith(
-        color: AppColors.textSecondary,
+        color: tc.secondary,
         fontWeight: FontWeight.w600,
       ),
     );

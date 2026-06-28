@@ -88,6 +88,10 @@ func (h *ReportHandler) GetDashboard(c *gin.Context) {
 		})
 	}
 
+	// 本周打卡（周一至周日，只有当天存在 review_records 复习记录才视为打卡；
+	// 录题不计入，与 streak 语义一致；今天未复习为 false；今天之后未来天为 false）
+	weeklyCompleted, _ := h.reportRepo.GetWeeklyCompleted(ctx, userID)
+
 	respondSuccess(c, gin.H{
 		"greeting": gin.H{
 			"nickname":    nickname,
@@ -106,6 +110,7 @@ func (h *ReportHandler) GetDashboard(c *gin.Context) {
 		"error_distribution": errorDistData,
 		"weekly_trend":       weeklyTrendData,
 		"weak_knowledge_top": weakKnowledgeData,
+		"weekly_completed":   weeklyCompleted,
 	})
 }
 
@@ -138,7 +143,7 @@ func (h *ReportHandler) GetWeeklyReports(c *gin.Context) {
 	}
 
 	respondSuccess(c, gin.H{
-		"list": reports,
+		"items": reports,
 		"pagination": gin.H{
 			"page":      page,
 			"page_size": pageSize,

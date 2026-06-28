@@ -11,6 +11,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/buttons/primary_button.dart';
 import '../bloc/auth_bloc.dart';
 
@@ -101,7 +102,11 @@ class _OnboardingPageState extends State<OnboardingPage>
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    final tc = context.textColors;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Stack(
           children: [
@@ -118,7 +123,7 @@ class _OnboardingPageState extends State<OnboardingPage>
                 }
               },
               itemBuilder: (context, index) =>
-                  index == 1 ? _buildFlipCardPage(_pages[index]) : _buildPage(_pages[index]),
+                  index == 1 ? _buildFlipCardPage(_pages[index], isGlass, tc, accent) : _buildPage(_pages[index], isGlass, tc),
             ),
 
             // 右上角跳过按钮（第3屏隐藏）
@@ -136,14 +141,19 @@ class _OnboardingPageState extends State<OnboardingPage>
                         vertical: AppSpacing.sm,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.8),
+                        color: isGlass
+                            ? Colors.white.withOpacity(0.12)
+                            : Colors.white.withOpacity(0.8),
                         borderRadius: AppRadius.radiusFull,
+                        border: isGlass
+                            ? Border.all(color: Colors.white.withOpacity(0.25))
+                            : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         '跳过',
                         style: AppTypography.primary.caption.copyWith(
-                          color: AppColors.textSecondary,
+                          color: isGlass ? tc.secondary : AppColors.textSecondary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -185,9 +195,9 @@ class _OnboardingPageState extends State<OnboardingPage>
     );
   }
 
-  Widget _buildPage(_OnboardingData data) {
+  Widget _buildPage(_OnboardingData data, bool isGlass, AppTextThemeColors tc) {
     return Container(
-      color: data.bgColor,
+      color: isGlass ? Colors.transparent : data.bgColor,
       padding: AppSpacing.pagePadding,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -203,7 +213,7 @@ class _OnboardingPageState extends State<OnboardingPage>
             data.title,
             textAlign: TextAlign.center,
             style: AppTypography.primary.h1.copyWith(
-              color: AppColors.textPrimary,
+              color: tc.primary,
             ),
           ),
           SizedBox(height: AppSpacing.md),
@@ -212,7 +222,7 @@ class _OnboardingPageState extends State<OnboardingPage>
             data.subtitle,
             textAlign: TextAlign.center,
             style: AppTypography.primary.body.copyWith(
-              color: AppColors.textSecondary,
+              color: tc.secondary,
             ),
           ),
         ],
@@ -221,9 +231,9 @@ class _OnboardingPageState extends State<OnboardingPage>
   }
 
   /// 第二屏：带翻卡交互动画的页面
-  Widget _buildFlipCardPage(_OnboardingData data) {
+  Widget _buildFlipCardPage(_OnboardingData data, bool isGlass, AppTextThemeColors tc, Color accent) {
     return Container(
-      color: data.bgColor,
+      color: isGlass ? Colors.transparent : data.bgColor,
       padding: AppSpacing.pagePadding,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -243,15 +253,24 @@ class _OnboardingPageState extends State<OnboardingPage>
                   width: 160,
                   height: 200,
                   decoration: BoxDecoration(
-                    color: isBack ? AppColors.brandPrimary : Colors.white,
+                    color: isBack
+                        ? accent
+                        : (isGlass
+                            ? Colors.white.withOpacity(0.12)
+                            : Colors.white),
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    border: isGlass && !isBack
+                        ? Border.all(color: Colors.white.withOpacity(0.25))
+                        : null,
+                    boxShadow: isGlass
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 16,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
                   ),
                   alignment: Alignment.center,
                   child: isBack
@@ -270,7 +289,7 @@ class _OnboardingPageState extends State<OnboardingPage>
             child: Text(
               '试试翻动卡片！',
               style: AppTypography.primary.caption.copyWith(
-                color: AppColors.brandPrimary,
+                color: accent,
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
               ),
@@ -282,7 +301,7 @@ class _OnboardingPageState extends State<OnboardingPage>
             data.title,
             textAlign: TextAlign.center,
             style: AppTypography.primary.h1.copyWith(
-              color: AppColors.textPrimary,
+              color: tc.primary,
             ),
           ),
           SizedBox(height: AppSpacing.md),
@@ -291,7 +310,7 @@ class _OnboardingPageState extends State<OnboardingPage>
             data.subtitle,
             textAlign: TextAlign.center,
             style: AppTypography.primary.body.copyWith(
-              color: AppColors.textSecondary,
+              color: tc.secondary,
             ),
           ),
         ],
@@ -300,6 +319,8 @@ class _OnboardingPageState extends State<OnboardingPage>
   }
 
   Widget _buildDots() {
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(3, (index) {
@@ -310,7 +331,9 @@ class _OnboardingPageState extends State<OnboardingPage>
           width: isActive ? 24 : 8,
           height: 8,
           decoration: BoxDecoration(
-            color: isActive ? AppColors.brandPrimary : AppColors.border,
+            color: isActive
+                ? accent
+                : (isGlass ? Colors.white.withOpacity(0.25) : AppColors.border),
             borderRadius: AppRadius.radiusFull,
           ),
         );

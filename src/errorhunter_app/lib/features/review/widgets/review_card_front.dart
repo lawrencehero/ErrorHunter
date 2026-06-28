@@ -8,9 +8,12 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
+import '../../../utils/image_url_helper.dart';
 import '../../../widgets/common/buttons/primary_button.dart';
 import '../../../widgets/common/buttons/secondary_button.dart';
 import '../../question/models/question_model.dart';
+import '../../question/widgets/math_text.dart';
 
 /// 复习卡片正面
 class ReviewCardFront extends StatelessWidget {
@@ -25,19 +28,24 @@ class ReviewCardFront extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
     return Container(
       width: double.infinity,
       padding: AppSpacing.cardPadding,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: isGlass ? Colors.white.withOpacity(0.12) : AppColors.surface,
         borderRadius: AppRadius.radiusXl,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: isGlass ? Border.all(color: Colors.white.withOpacity(0.25)) : null,
+        boxShadow: isGlass
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,7 +54,7 @@ class ReviewCardFront extends StatelessWidget {
           Expanded(
             child: Center(
               child: SingleChildScrollView(
-                child: _buildQuestionContent(),
+                child: _buildQuestionContent(tc, isGlass),
               ),
             ),
           ),
@@ -54,7 +62,7 @@ class ReviewCardFront extends StatelessWidget {
           SizedBox(height: AppSpacing.lg),
 
           // ─── 答案遮挡区（毛玻璃效果）─────────────────
-          _buildBlurredAnswerArea(),
+          _buildBlurredAnswerArea(tc, isGlass),
 
           SizedBox(height: AppSpacing.lg),
 
@@ -74,7 +82,7 @@ class ReviewCardFront extends StatelessWidget {
             child: Text(
               '💡 请在纸上重做，然后对照答案',
               style: AppTypography.primary.caption.copyWith(
-                color: AppColors.textTertiary,
+                color: tc.tertiary,
               ),
             ),
           ),
@@ -83,14 +91,16 @@ class ReviewCardFront extends StatelessWidget {
     );
   }
 
-  Widget _buildQuestionContent() {
+  Widget _buildQuestionContent(AppTextThemeColors tc, bool isGlass) {
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     // 如果有图片URL则显示图片，否则显示OCR文字
     if (question.imageUrl.isNotEmpty &&
         !question.imageUrl.startsWith('mock')) {
+      final normalizedUrl = normalizeImageUrl(question.imageUrl);
       return ClipRRect(
         borderRadius: AppRadius.radiusMd,
         child: Image.network(
-          question.imageUrl,
+          normalizedUrl,
           fit: BoxFit.contain,
           loadingBuilder: (context, child, loadingProgress) {
             if (loadingProgress == null) return child;
@@ -101,32 +111,38 @@ class ReviewCardFront extends StatelessWidget {
                         loadingProgress.expectedTotalBytes!
                     : null,
                 strokeWidth: 2,
-                color: AppColors.brandPrimary,
+                color: accent,
               ),
             );
           },
-          errorBuilder: (_, __, ___) => _buildTextFallback(),
+          // 图片加载失败时回退到 OCR 文本（用 MathText 渲染 LaTeX 公式），
+          // 不再让用户看到几十秒的转圈 + 原始 \frac{} 文本。
+          errorBuilder: (_, __, ___) => _buildTextFallback(tc),
         ),
       );
     }
-    return _buildTextFallback();
+    return _buildTextFallback(tc);
   }
 
-  Widget _buildTextFallback() {
+  Widget _buildTextFallback(AppTextThemeColors tc) {
+    final textStyle = AppTypography.primary.h3.copyWith(
+      color: tc.primary,
+      height: 1.8,
+    );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-      child: Text(
+      // OCR 文本可能含 LaTeX（如 \frac{3}{4}、\angle），用 MathText 内联渲染，
+      // 解析失败的公式段会回退纯文本。MathText 支持 textAlign 仅作用于纯文本行。
+      child: MathText(
         question.ocrText ?? '暂无题目内容',
-        style: AppTypography.primary.h3.copyWith(
-          color: AppColors.textPrimary,
-          height: 1.8,
-        ),
+        style: textStyle,
+        mathStyle: textStyle,
         textAlign: TextAlign.center,
       ),
     );
   }
 
-  Widget _buildBlurredAnswerArea() {
+  Widget _buildBlurredAnswerArea(AppTextThemeColors tc, bool isGlass) {
     return ClipRRect(
       borderRadius: AppRadius.radiusMd,
       child: BackdropFilter(
@@ -138,10 +154,15 @@ class ReviewCardFront extends StatelessWidget {
             vertical: AppSpacing.lg,
           ),
           decoration: BoxDecoration(
-            color: AppColors.background.withOpacity(0.7),
+            // 玻璃下用半透明白叠毛玻璃；游戏化沿用近白底色。
+            color: isGlass
+                ? Colors.white.withOpacity(0.18)
+                : AppColors.background.withOpacity(0.7),
             borderRadius: AppRadius.radiusMd,
             border: Border.all(
-              color: AppColors.border.withOpacity(0.5),
+              color: isGlass
+                  ? Colors.white.withOpacity(0.3)
+                  : AppColors.border.withOpacity(0.5),
             ),
           ),
           child: Row(
@@ -150,21 +171,21 @@ class ReviewCardFront extends StatelessWidget {
               Text(
                 '▓▓▓ ',
                 style: AppTypography.primary.body.copyWith(
-                  color: AppColors.textTertiary,
+                  color: tc.tertiary,
                   letterSpacing: 2,
                 ),
               ),
               Text(
                 '答案已隐藏',
                 style: AppTypography.primary.body.copyWith(
-                  color: AppColors.textSecondary,
+                  color: tc.secondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               Text(
                 ' ▓▓▓',
                 style: AppTypography.primary.body.copyWith(
-                  color: AppColors.textTertiary,
+                  color: tc.tertiary,
                   letterSpacing: 2,
                 ),
               ),

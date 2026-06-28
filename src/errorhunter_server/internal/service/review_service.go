@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/errorhunter/errorhunter-server/internal/model"
@@ -32,47 +33,18 @@ func NewReviewService(
 }
 
 // ReviewQueueResponse 复习队列响应
+//
+// review_items / revive_items 均直接返回完整 model.Question（与错题列表 API 的
+// 题目序列化结构一致），客户端 QuestionModel.fromJson 无需特殊映射即可解析。
+// 复活检测题的 status 为 MASTERED（GetReviveCandidates 取 StatusMastered），
+// 客户端 ReviewBloc._isReviveCheck 据此识别。
 type ReviewQueueResponse struct {
-	ReviewItems   []ReviewItem `json:"review_items"`
-	ReviveItems   []ReviveItem `json:"revive_items"`
-	TotalCount    int          `json:"total_count"`
-	ReviveCount   int          `json:"revive_count"`
-	HasMore       bool         `json:"has_more"`
-	OverflowCount int          `json:"overflow_count"`
-}
-
-// ReviewItem 复习项
-type ReviewItem struct {
-	ID               int64                 `json:"id"`
-	Type             string                `json:"type"` // NORMAL
-	ImageURL         string                `json:"image_url"`
-	OcrText          string                `json:"ocr_text,omitempty"`
-	CorrectAnswer    string                `json:"correct_answer,omitempty"`
-	MyAnswer         string                `json:"my_answer,omitempty"`
-	SolutionSteps    []string              `json:"solution_steps,omitempty"`
-	ErrorCategory    string                `json:"error_category"`
-	ErrorSubCategory string                `json:"error_sub_category,omitempty"`
-	ReviewRound      int                   `json:"review_round"`
-	KnowledgePoints  []KnowledgePointBrief `json:"knowledge_points"`
-}
-
-// ReviveItem 复活检测项
-type ReviveItem struct {
-	ID                  int64  `json:"id"`
-	Type                string `json:"type"` // REVIVE_CHECK
-	Label               string `json:"label"`
-	ImageURL            string `json:"image_url"`
-	OcrText             string `json:"ocr_text,omitempty"`
-	CorrectAnswer       string `json:"correct_answer,omitempty"`
-	MasteredAt          string `json:"mastered_at"`
-	ReviveCheckInterval int    `json:"revive_check_interval"`
-}
-
-// KnowledgePointBrief 知识点简要
-type KnowledgePointBrief struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Level int16  `json:"level"`
+	ReviewItems   []*model.Question `json:"review_items"`
+	ReviveItems   []*model.Question `json:"revive_items"`
+	TotalCount    int               `json:"total_count"`
+	ReviveCount   int               `json:"revive_count"`
+	HasMore       bool              `json:"has_more"`
+	OverflowCount int               `json:"overflow_count"`
 }
 
 // GetReviewQueue 获取今日复习队列
@@ -86,76 +58,31 @@ func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyL
 	}
 
 	// 应用每日上限
-	reviewItems := make([]ReviewItem, 0)
 	overflowCount := 0
 	if len(dueQuestions) > dailyLimit {
 		overflowCount = len(dueQuestions) - dailyLimit
 		dueQuestions = dueQuestions[:dailyLimit]
 	}
 
-	for _, q := range dueQuestions {
-		item := ReviewItem{
-			ID:            q.ID,
-			Type:          "NORMAL",
-			ImageURL:      q.ImageURL,
-			ReviewRound:   q.ReviewRound,
-			ErrorCategory: string(q.ErrorCategory),
-		}
-		if q.OcrText != nil {
-			item.OcrText = *q.OcrText
-		}
-		if q.CorrectAnswer != nil {
-			item.CorrectAnswer = *q.CorrectAnswer
-		}
-		if q.MyAnswer != nil {
-			item.MyAnswer = *q.MyAnswer
-		}
-		if q.ErrorSubCategory != nil {
-			item.ErrorSubCategory = *q.ErrorSubCategory
-		}
-		steps, _ := q.SolutionSteps.ToStringSlice()
-		item.SolutionSteps = steps
-
-		for _, kp := range q.KnowledgePoints {
-			item.KnowledgePoints = append(item.KnowledgePoints, KnowledgePointBrief{
-				ID:    kp.ID,
-				Name:  kp.Name,
-				Level: kp.Level,
-			})
-		}
-		reviewItems = append(reviewItems, item)
+	// 直接复用 model.Question（已 Preload KnowledgePoints），序列化结构与错题列表 API 一致
+	reviewItems := make([]*model.Question, 0, len(dueQuestions))
+	for i := range dueQuestions {
+		reviewItems = append(reviewItems, &dueQuestions[i])
 	}
 
-	// 获取复活检测题目（最多3道）
+	// 获取复活检测题目（最多3道，status=MASTERED）
 	reviveQuestions, err := s.questionRepo.GetReviveCandidates(ctx, userID, today, 3)
 	if err != nil {
 		return nil, errcode.EInternalServer
 	}
-
-	reviveItems := make([]ReviveItem, 0)
-	for _, q := range reviveQuestions {
-		interval := 30
-		if q.ReviveCheckInterval != nil {
-			interval = *q.ReviveCheckInterval
-		}
-		item := ReviveItem{
-			ID:                  q.ID,
-			Type:                "REVIVE_CHECK",
-			Label:               "复习巩固",
-			ImageURL:            q.ImageURL,
-			ReviveCheckInterval: interval,
-		}
-		if q.OcrText != nil {
-			item.OcrText = *q.OcrText
-		}
-		if q.CorrectAnswer != nil {
-			item.CorrectAnswer = *q.CorrectAnswer
-		}
-		if q.MasteredAt != nil {
-			item.MasteredAt = q.MasteredAt.Format(time.RFC3339)
-		}
-		reviveItems = append(reviveItems, item)
+	reviveItems := make([]*model.Question, 0, len(reviveQuestions))
+	for i := range reviveQuestions {
+		reviveItems = append(reviveItems, &reviveQuestions[i])
 	}
+
+	// 显式填充复习总轮次，避免前端依赖默认值（review_items / revive_items 均为 *model.Question）
+	fillTotalReviewRoundsPtrs(reviewItems)
+	fillTotalReviewRoundsPtrs(reviveItems)
 
 	return &ReviewQueueResponse{
 		ReviewItems:   reviewItems,
@@ -262,9 +189,17 @@ func (s *ReviewService) SubmitReview(ctx context.Context, userID int64, req Subm
 		return nil, errcode.EInternalServer
 	}
 
-	// 更新打卡天数（简化处理）
-	user, _ := s.userRepo.FindByID(ctx, userID)
-	streakDays := user.StreakDays
+	// 更新打卡天数：原子更新（单条 SQL，当天只 +1 一次，并发不叠加）。
+	// streak 更新失败不应让整个 SubmitReview 失败，回退用旧值并记录日志。
+	streakDays := 0
+	if newStreak, err := s.userRepo.UpdateStreakOnActivity(ctx, userID); err != nil {
+		log.Printf("[WARN] UpdateStreakOnActivity failed for user %d: %v", userID, err)
+		if user, ferr := s.userRepo.FindByID(ctx, userID); ferr == nil {
+			streakDays = user.StreakDays
+		}
+	} else {
+		streakDays = newStreak
+	}
 
 	resp := &SubmitReviewResponse{
 		QuestionID:     question.ID,
@@ -310,26 +245,26 @@ func (s *ReviewService) handleReviveCheck(ctx context.Context, userID int64, req
 		if nextInterval == 0 {
 			// 永久消灭
 			s.questionRepo.MarkPermanentlyMastered(ctx, question.ID)
-			return &SubmitReviewResponse{
+			return s.applyStreakUpdate(ctx, userID, &SubmitReviewResponse{
 				QuestionID:     question.ID,
 				NewStatus:      string(model.StatusPermanentlyMastered),
 				NewMasterCount: 3,
 				JustMastered:   false,
-			}, nil
+			}), nil
 		}
 		nextDate := time.Now().AddDate(0, 0, nextInterval)
 		s.questionRepo.UpdateReviveSchedule(ctx, question.ID, nextInterval, nextDate)
-		return &SubmitReviewResponse{
+		return s.applyStreakUpdate(ctx, userID, &SubmitReviewResponse{
 			QuestionID:     question.ID,
 			NewStatus:      string(model.StatusMastered),
 			NewMasterCount: 3,
 			NextReviewDate: nextDate.Format("2006-01-02"),
-		}, nil
+		}), nil
 	} else {
 		// 复活失败
 		nextDate := time.Now().AddDate(0, 0, 1)
 		s.questionRepo.ResetReviewPlan(ctx, question.ID, nextDate)
-		return &SubmitReviewResponse{
+		return s.applyStreakUpdate(ctx, userID, &SubmitReviewResponse{
 			QuestionID:       question.ID,
 			NewStatus:        string(model.StatusReviewing),
 			NewReviewRound:   1,
@@ -337,8 +272,22 @@ func (s *ReviewService) handleReviveCheck(ctx context.Context, userID int64, req
 			NextReviewDate:   nextDate.Format("2006-01-02"),
 			IsReviveFailed:   true,
 			EncourageMessage: "这道题需要再巩固一下哦！加油",
-		}, nil
+		}), nil
 	}
+}
+
+// applyStreakUpdate 复活检测/复习活跃后更新打卡天数并填回响应。
+// streak 更新失败不阻断主流程，回退用旧 StreakDays（复活复习同样计活跃）。
+func (s *ReviewService) applyStreakUpdate(ctx context.Context, userID int64, resp *SubmitReviewResponse) *SubmitReviewResponse {
+	if newStreak, err := s.userRepo.UpdateStreakOnActivity(ctx, userID); err != nil {
+		log.Printf("[WARN] UpdateStreakOnActivity failed for user %d (revive): %v", userID, err)
+		if user, ferr := s.userRepo.FindByID(ctx, userID); ferr == nil {
+			resp.StreakDays = user.StreakDays
+		}
+	} else {
+		resp.StreakDays = newStreak
+	}
+	return resp
 }
 
 // GetReviewHistory 获取复习历史

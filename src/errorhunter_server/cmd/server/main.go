@@ -15,6 +15,7 @@ import (
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/jwt"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/ocr"
+	"github.com/errorhunter/errorhunter-server/internal/pkg/sms"
 	"github.com/errorhunter/errorhunter-server/internal/repository"
 	"github.com/errorhunter/errorhunter-server/internal/service"
 	"github.com/gin-gonic/gin"
@@ -36,12 +37,28 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// 加载知识点配置
+	kpConfigPath := os.Getenv("EH_KP_CONFIG_PATH")
+	if kpConfigPath == "" {
+		kpConfigPath = "configs/knowledge_points.yaml"
+	}
+	kpCfg, err := config.LoadKnowledgePoints(kpConfigPath)
+	if err != nil {
+		log.Fatalf("Failed to load knowledge points config: %v", err)
+	}
+
 	// 初始化数据库
 	db, err := initDatabase(cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
 	log.Println("Database connected successfully")
+
+	// 种子知识点（幂等，启动时把配置文件同步进 DB）
+	kpSeeder := service.NewKnowledgePointSeeder(db, kpCfg)
+	if _, err := kpSeeder.Seed(context.Background()); err != nil {
+		log.Fatalf("Failed to seed knowledge points: %v", err)
+	}
 
 	// 初始化Redis
 	redisClient, err := initRedis(cfg.Redis)
@@ -76,11 +93,31 @@ func main() {
 	questionRepo := repository.NewQuestionRepository(db)
 	reviewRepo := repository.NewReviewRecordRepository(db)
 	reportRepo := repository.NewWeeklyReportRepository(db)
+	kpRepo := repository.NewKnowledgePointRepository(db)
+
+	// 初始化SMS服务
+	var smsProvider sms.Provider
+	if cfg.SMS.Provider == "aliyun" {
+		smsProvider = &sms.AliyunProvider{
+			AccessKey:     cfg.SMS.Aliyun.AccessKey,
+			SecretKey:     cfg.SMS.Aliyun.SecretKey,
+			Endpoint:      cfg.SMS.Aliyun.Endpoint,
+			SignName:      cfg.SMS.Aliyun.SignName,
+			TemplateCode:  cfg.SMS.Aliyun.TemplateCode,
+			TemplateParam: cfg.SMS.Aliyun.TemplateParam,
+			CodeLength:    cfg.SMS.Aliyun.CodeLength,
+			CodeType:      cfg.SMS.Aliyun.CodeType,
+			ValidTime:     cfg.SMS.Aliyun.ValidTime,
+		}
+	} else {
+		smsProvider = &sms.MockProvider{}
+	}
 
 	// 初始化Service
-	authService := service.NewAuthService(userRepo, redisClient, jwtMgr, cfg.OTP)
-	questionService := service.NewQuestionService(questionRepo, userRepo)
+	authService := service.NewAuthService(userRepo, redisClient, jwtMgr, cfg.OTP, smsProvider)
+	questionService := service.NewQuestionService(questionRepo, userRepo, db)
 	reviewService := service.NewReviewService(questionRepo, reviewRepo, userRepo)
+	weeklyReportService := service.NewWeeklyReportService(reportRepo, questionRepo, reviewRepo, userRepo, db)
 
 	// 初始化Handler
 	authHandler := handler.NewAuthHandler(authService)
@@ -89,10 +126,15 @@ func main() {
 	reportHandler := handler.NewReportHandler(reportRepo, userRepo)
 	userHandler := handler.NewUserHandler(userRepo)
 	syncHandler := handler.NewSyncHandler()
+	kpHandler := handler.NewKnowledgePointHandler(kpRepo)
 
 	uploadHandler, err := handler.NewUploadHandler(cfg.MinIO, ocrService)
 	if err != nil {
 		log.Printf("Warning: Failed to init upload handler: %v", err)
+	}
+	// 注入对象存储删除能力：永久删除错题/清空回收站时同步清理 MinIO 图片
+	if uploadHandler != nil {
+		questionService.SetImageDeleter(uploadHandler)
 	}
 
 	// 设置Gin模式
@@ -112,6 +154,11 @@ func main() {
 	// API版本组
 	v1 := router.Group("/v1")
 	{
+		// 图片代理（无需认证，objectKey 含 UUID 不可猜测）
+		if uploadHandler != nil {
+			v1.GET("/files/*key", uploadHandler.ServeFile)
+		}
+
 		// Auth 模块（无需认证）
 		auth := v1.Group("/auth")
 		{
@@ -141,6 +188,12 @@ func main() {
 				questions.DELETE("/:id/permanent", questionHandler.PermanentDelete)
 			}
 
+			// Knowledge Points
+			knowledgePoints := authenticated.Group("/knowledge-points")
+			{
+				knowledgePoints.GET("", kpHandler.List)
+			}
+
 			// Reviews
 			reviews := authenticated.Group("/reviews")
 			{
@@ -162,6 +215,8 @@ func main() {
 				authenticated.POST("/upload", uploadHandler.Upload)
 				authenticated.POST("/upload/ocr", uploadHandler.OCR)
 				authenticated.GET("/upload/signed-url", uploadHandler.GetSignedURL)
+				// 存储用量：统计当前用户在 MinIO 的错题图片总量
+				authenticated.GET("/storage", uploadHandler.GetStorageUsage)
 			}
 
 			// User
@@ -193,6 +248,10 @@ func main() {
 		Handler: router,
 	}
 
+	// 后台周报生成任务 ctx：随 server 优雅关闭一并退出
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
+
 	go func() {
 		log.Printf("Server starting on %s", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -200,11 +259,21 @@ func main() {
 		}
 	}()
 
+	// 启动周报定时生成后台 goroutine：
+	//   - 启动时先跑一次：为所有活跃用户补生成"上一完整周"的周报（服务重启可补生成）
+	//   - 之后每 24h 触发一次：再次尝试生成上一完整周（已存在则跳过，幂等）
+	// 触发时机不精确到每天 00:05（避免引入定时计算复杂度）；24h ticker + 启动即跑
+	// 已能满足"周报不漏生成"的核心诉求。
+	startWeeklyReportScheduler(bgCtx, weeklyReportService)
+
 	// 优雅关闭
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
+
+	// 通知后台 goroutine 退出
+	bgCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -214,6 +283,49 @@ func main() {
 	}
 
 	log.Println("Server exited properly")
+}
+
+// startWeeklyReportScheduler 启动周报生成后台循环。
+//
+// 行为：
+//   1. 启动时立即跑一次：为所有活跃用户生成"上一完整周"周报（补生成，幂等）。
+//   2. 之后每 24 小时 tick 一次，重复生成"上一完整周"（已存在则跳过）。
+//
+// "上一完整周"判定（见 service.LastCompletedWeekStart）：以当前上海时刻所在周的
+// 上一周的周一为 weekStart，保证只生成 weekEnd <= now 的已结束周，不生成当前未结束周。
+//
+// 通过 ctx 控制退出：ctx.Done() 时 goroutine 返回，配合 server 优雅关闭。
+func startWeeklyReportScheduler(ctx context.Context, svc *service.WeeklyReportService) {
+	const tickInterval = 24 * time.Hour
+
+	runOnce := func() {
+		weekStart := service.LastCompletedWeekStart(time.Now())
+		generated, err := svc.GenerateForAllActiveUsers(ctx, weekStart)
+		if err != nil {
+			log.Printf("weekly_report: 定时生成遇到错误（仍可能已生成部分）generated=%d week=%v: %v",
+				generated, weekStart, err)
+		} else {
+			log.Printf("weekly_report: 定时生成完成 generated=%d week=%v", generated, weekStart)
+		}
+	}
+
+	go func() {
+		// 启动即跑一次（补生成上周）
+		runOnce()
+
+		ticker := time.NewTicker(tickInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("weekly_report: scheduler stopped")
+				return
+			case <-ticker.C:
+				runOnce()
+			}
+		}
+	}()
 }
 
 func initDatabase(cfg config.DatabaseConfig) (*gorm.DB, error) {

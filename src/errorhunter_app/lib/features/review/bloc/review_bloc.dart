@@ -91,6 +91,12 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
       final isFirst = !_hasShownFirstEliminate;
       _hasShownFirstEliminate = true;
 
+      // 消灭路径：评价已最终确定，立即提交后端（fire-and-forget，失败不阻断）
+      _submitReviewResult(
+        currentState.currentQuestion,
+        event.rating,
+      );
+
       emit(EliminateTriggered(
         questionId: questionId,
         isFirstInSession: isFirst,
@@ -152,6 +158,11 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     if (currentState is EvaluationPending) {
       currentIndex = currentState.currentIndex;
       total = currentState.total;
+      // 撤销窗口结束确认：评价最终确定，提交后端（fire-and-forget，失败不阻断）
+      _submitReviewResult(
+        currentState.currentQuestion,
+        currentState.rating,
+      );
     } else if (currentState is ReviewInProgress) {
       currentIndex = currentState.currentIndex;
       total = currentState.total;
@@ -286,12 +297,48 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
   }
 
   bool _checkShouldEliminate(QuestionModel q, SelfEvalRating rating) {
-    // 当 master_count 达到 3 时触发消灭
-    // TODO: 从后端获取真实的 master_count（后端就绪后替换）
+    // ⚠️ 临时方案：用 currentReviewRound >= 3 模拟 master_count 达到阈值
+    // TODO: 后端返回真实 master_count 后，替换为 q.masterCount >= 3
     final mockMasterCount = q.currentReviewRound >= 3 &&
         (rating == SelfEvalRating.mastered ||
             rating == SelfEvalRating.remembered);
     return mockMasterCount;
+  }
+
+  /// 前端 SelfEvalRating → 后端 self_rating 字符串映射。
+  ///
+  /// 后端只接受 MASTERED / PARTIAL / FAILED（见 scheduler.go SelfRating 常量），
+  /// 前端有 mastered/remembered/partial/forgot/forgotten 五种，需收敛：
+  ///   mastered   → MASTERED
+  ///   remembered → MASTERED
+  ///   partial    → PARTIAL
+  ///   forgot     → FAILED
+  ///   forgotten  → FAILED
+  static String _mapToBackendRating(SelfEvalRating rating) {
+    switch (rating) {
+      case SelfEvalRating.mastered:
+      case SelfEvalRating.remembered:
+        return 'MASTERED';
+      case SelfEvalRating.partial:
+        return 'PARTIAL';
+      case SelfEvalRating.forgot:
+      case SelfEvalRating.forgotten:
+        return 'FAILED';
+    }
+  }
+
+  /// 提交单题复习结果到后端（fire-and-forget，失败仅忽略，不阻断复习流程）。
+  void _submitReviewResult(QuestionModel question, SelfEvalRating rating) {
+    // 不 await：UI 不应被网络请求阻塞；失败也不影响本地复习体验。
+    _reviewRepository
+        .submitReviewResult(
+          questionId: question.id,
+          selfRating: _mapToBackendRating(rating),
+          isReviveCheck: _isReviveCheck(question),
+        )
+        .catchError((_) {
+          // 静默忽略：复习体验优先，dashboard 刷新容错由后端兜底。
+        });
   }
 
   @override

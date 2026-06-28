@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 import '../models/knowledge_point_model.dart';
 
@@ -70,6 +71,10 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
+    final dangerGlass = isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
     // Merge all points
     final allPoints = <KnowledgePoint>[
       ...widget.recommendedPoints,
@@ -86,14 +91,14 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
             Text(
               '知识点',
               style: AppTypography.primary.h3.copyWith(
-                color: AppColors.textPrimary,
+                color: tc.primary,
               ),
             ),
             SizedBox(width: AppSpacing.sm),
             Text(
               '(至少选1个)',
               style: AppTypography.primary.caption.copyWith(
-                color: AppColors.textSecondary,
+                color: tc.secondary,
               ),
             ),
           ],
@@ -106,11 +111,13 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
           runSpacing: AppSpacing.sm,
           children: [
             // AI Recommended
-            ...widget.recommendedPoints.map((kp) => _buildChip(kp)),
+            ...widget.recommendedPoints.map((kp) =>
+                _buildChip(kp, isGlass: isGlass, accent: accent)),
             // Others
             ...widget.availablePoints
                 .where((p) => !widget.recommendedPoints.any((r) => r.id == p.id))
-                .map((kp) => _buildChip(kp)),
+                .map((kp) =>
+                    _buildChip(kp, isGlass: isGlass, accent: accent)),
           ],
         ),
 
@@ -123,19 +130,23 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
               child: Container(
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isGlass ? Colors.white.withOpacity(0.12) : Colors.white,
                   borderRadius: AppRadius.radiusMd,
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(
+                    color: isGlass
+                        ? Colors.white.withOpacity(0.25)
+                        : AppColors.border,
+                  ),
                 ),
                 child: TextField(
                   controller: _customController,
                   style: AppTypography.primary.body.copyWith(
-                    color: AppColors.textPrimary,
+                    color: tc.primary,
                   ),
                   decoration: InputDecoration(
                     hintText: '添加自定义知识点...',
                     hintStyle: AppTypography.primary.body.copyWith(
-                      color: AppColors.textTertiary,
+                      color: tc.tertiary,
                     ),
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: AppSpacing.sm,
@@ -154,7 +165,7 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.brandPrimary,
+                  color: accent,
                   borderRadius: AppRadius.radiusMd,
                 ),
                 child: const Icon(Icons.add, color: Colors.white, size: 20),
@@ -169,7 +180,7 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
           Text(
             '请至少选择1个知识点',
             style: AppTypography.primary.caption.copyWith(
-              color: AppColors.danger,
+              color: dangerGlass,
               fontSize: 12,
             ),
           ),
@@ -178,7 +189,9 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
     );
   }
 
-  Widget _buildChip(KnowledgePoint kp) {
+  Widget _buildChip(KnowledgePoint kp,
+      {required bool isGlass, required Color accent}) {
+    final tc = context.textColors;
     final isSelected = _isSelected(kp);
     final isRecommended = kp.isRecommended;
 
@@ -192,11 +205,13 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
         ),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.brandPrimary.withOpacity(0.1)
-              : Colors.white,
+              ? accent.withOpacity(isGlass ? 0.2 : 0.1)
+              : (isGlass ? Colors.white.withOpacity(0.12) : Colors.white),
           borderRadius: AppRadius.radiusFull,
           border: Border.all(
-            color: isSelected ? AppColors.brandPrimary : AppColors.border,
+            color: isSelected
+                ? accent
+                : (isGlass ? Colors.white.withOpacity(0.25) : AppColors.border),
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -210,7 +225,7 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
             Text(
               kp.name,
               style: AppTypography.primary.caption.copyWith(
-                color: isSelected ? AppColors.brandPrimary : AppColors.textSecondary,
+                color: isSelected ? accent : tc.secondary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
@@ -219,7 +234,7 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
               Icon(
                 Icons.check_rounded,
                 size: 14,
-                color: AppColors.brandPrimary,
+                color: accent,
               ),
             ],
           ],

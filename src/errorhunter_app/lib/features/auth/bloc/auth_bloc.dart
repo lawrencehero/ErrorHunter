@@ -51,7 +51,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     if (token != null && token.isNotEmpty && userId != null) {
       final isValid = await _authRepository.validateToken(token);
       if (!isValid) {
-        await _clearStorage();
+        // 仅当 token 明确无效（401/403）时清掉 token
+        // 保留 phone / nickname / grade 等用户偏好，下次重登无需重新填写
+        await _prefs.remove(_StorageKeys.token);
+        await _prefs.remove(_StorageKeys.userId);
         emit(const Unauthenticated());
         return;
       }

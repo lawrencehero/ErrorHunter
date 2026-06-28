@@ -7,6 +7,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 
 class WeakKnowledgeItem {
   final String name;
@@ -21,16 +22,25 @@ class WeakKnowledgeList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    final tc = context.textColors;
+    // 玻璃下 warning 提亮为暖琥珀
+    final warningColor = isGlass ? const Color(0xFFFFB74D) : AppColors.warning;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        // 玻璃下：半透明白底 + 白描边，去掉 chunky 底影
+        color: isGlass ? Colors.white.withOpacity(0.12) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2)),
-          BoxShadow(color: AppColors.border, offset: const Offset(0, 3), blurRadius: 0),
-        ],
+        border: isGlass ? Border.all(color: Colors.white.withOpacity(0.25), width: 1) : null,
+        boxShadow: isGlass
+            ? null
+            : [
+                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2)),
+                BoxShadow(color: AppColors.border, offset: const Offset(0, 3), blurRadius: 0),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,25 +52,26 @@ class WeakKnowledgeList extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3E0),
+                  // 玻璃下用半透明白，避免浅橙底叠渐变背景
+                  color: isGlass ? Colors.white.withOpacity(0.15) : const Color(0xFFFFF3E0),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.warning),
+                child: Icon(Icons.warning_amber_rounded, size: 16, color: warningColor),
               ),
               const SizedBox(width: 8),
               Text('薄弱知识点',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: tc.primary),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          ...items.asMap().entries.map((e) => _buildItem(e.key, e.value)),
+          ...items.asMap().entries.map((e) => _buildItem(isGlass, tc, e.key, e.value)),
         ],
       ),
     );
   }
 
-  Widget _buildItem(int index, WeakKnowledgeItem item) {
+  Widget _buildItem(bool isGlass, AppTextThemeColors tc, int index, WeakKnowledgeItem item) {
     final maxError = items.fold<int>(0, (m, i) => i.errorCount > m ? i.errorCount : m);
     final ratio = maxError > 0 ? item.errorCount / maxError : 0.0;
 
@@ -88,7 +99,7 @@ class WeakKnowledgeList extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.name,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: tc.primary),
                 ),
                 const SizedBox(height: 4),
                 ClipRRect(
@@ -96,7 +107,10 @@ class WeakKnowledgeList extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: ratio,
                     minHeight: 8,
-                    backgroundColor: item.color.withOpacity(0.12),
+                    // 玻璃下轨道用半透明白，避免浅色叠渐变
+                    backgroundColor: isGlass
+                        ? Colors.white.withOpacity(0.15)
+                        : item.color.withOpacity(0.12),
                     valueColor: AlwaysStoppedAnimation(item.color),
                   ),
                 ),

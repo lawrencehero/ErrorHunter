@@ -7,6 +7,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/gradients.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/animations.dart';
+import '../../../theme/theme_manager.dart';
 
 /// 复习进度条 V2.0
 class ReviewProgressBar extends StatelessWidget {
@@ -26,6 +27,17 @@ class ReviewProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    // 玻璃下：背景用半透明白保证可见；前景渐变改用暖橙渐变，避免蓝叠深色渐变对比不足。
+    final effectiveBg = isGlass ? Colors.white.withOpacity(0.15) : backgroundColor;
+    final effectiveGradient = gradient ??
+        (isGlass
+            ? const LinearGradient(
+                colors: [Color(0xFFFFB74D), Color(0xFFFFCC80)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : AppGradients.primary);
     return ClipRRect(
       borderRadius: AppRadius.radiusFull,
       child: SizedBox(
@@ -33,7 +45,7 @@ class ReviewProgressBar extends StatelessWidget {
         child: Stack(
           children: [
             // 背景
-            Container(color: backgroundColor),
+            Container(color: effectiveBg),
             // 前景渐变动画
             AnimatedFractionallySizedBox(
               duration: AppAnimations.progressFill,
@@ -41,7 +53,7 @@ class ReviewProgressBar extends StatelessWidget {
               widthFactor: progress.clamp(0.0, 1.0),
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: gradient ?? AppGradients.primary,
+                  gradient: effectiveGradient,
                   borderRadius: AppRadius.radiusFull,
                 ),
               ),

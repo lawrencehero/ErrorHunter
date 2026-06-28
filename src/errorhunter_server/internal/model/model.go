@@ -110,6 +110,7 @@ type User struct {
 	MasteredAnimation  bool       `gorm:"not null;default:true" json:"mastered_animation"`
 	DailyReviewLimit   int        `gorm:"not null;default:20" json:"daily_review_limit"`
 	LastActiveAt       *time.Time `json:"last_active_at,omitempty"`
+	LastReviewDate     *time.Time `gorm:"type:date" json:"last_review_date,omitempty"`
 	CreatedAt          time.Time  `gorm:"not null;default:now()" json:"created_at"`
 	UpdatedAt          time.Time  `gorm:"not null;default:now()" json:"updated_at"`
 	DeletedAt          *time.Time `gorm:"index" json:"deleted_at,omitempty"`
@@ -138,7 +139,7 @@ type Question struct {
 	SolutionSteps         JSONB           `gorm:"type:jsonb" json:"solution_steps,omitempty"`
 	ErrorStepIndex        *int            `json:"error_step_index,omitempty"`
 	ErrorCategory         ErrorCategory   `gorm:"type:error_category_enum;not null" json:"error_category"`
-	ErrorSubCategory      *string         `gorm:"type:varchar(32)" json:"error_sub_category,omitempty"`
+	SubCategories         JSONB           `gorm:"type:jsonb" json:"sub_categories,omitempty"`
 	CustomTags            JSONB           `gorm:"type:jsonb" json:"custom_tags,omitempty"`
 	MasterCount           int             `gorm:"not null;default:0" json:"master_count"`
 	ReviewRound           int             `gorm:"not null;default:1" json:"review_round"`
@@ -153,6 +154,11 @@ type Question struct {
 	CreatedAt             time.Time       `gorm:"not null;default:now()" json:"created_at"`
 	UpdatedAt             time.Time       `gorm:"not null;default:now()" json:"updated_at"`
 	DeletedAt             *time.Time      `gorm:"index" json:"deleted_at,omitempty"`
+
+	// TotalReviewRounds 艾宾浩斯复习总轮次（= len(scheduler.EbbinghausIntervals)）。
+	// 非持久化：gorm:"-" 不影响 DB 读写；service 返回题目前显式赋值。
+	// omitempty 保证未赋值(0)时不输出，前端仍可回退默认 5。
+	TotalReviewRounds     int             `gorm:"-" json:"total_review_rounds,omitempty"`
 
 	// Associations
 	KnowledgePoints []KnowledgePoint `gorm:"many2many:question_knowledge;" json:"knowledge_points,omitempty"`
@@ -190,20 +196,21 @@ func (KnowledgePoint) TableName() string { return "knowledge_points" }
 
 // WeeklyReport 周报表
 type WeeklyReport struct {
-	ID                 int64         `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID             int64         `gorm:"not null;index" json:"user_id"`
-	WeekNumber         int           `gorm:"not null" json:"week_number"`
-	WeekStart          time.Time     `gorm:"type:date;not null" json:"week_start"`
-	WeekEnd            time.Time     `gorm:"type:date;not null" json:"week_end"`
-	NewQuestions       int           `gorm:"not null;default:0" json:"new_questions"`
-	MasteredQuestions  int           `gorm:"not null;default:0" json:"mastered_questions"`
-	ReviewCount        int           `gorm:"not null;default:0" json:"review_count"`
-	ReviewAccuracy     float64       `gorm:"type:decimal(5,2);not null;default:0.00" json:"review_accuracy"`
-	PrevWeekNew        *int          `json:"prev_week_new,omitempty"`
-	PrevWeekMastered   *int          `json:"prev_week_mastered,omitempty"`
-	TopErrorCategory   *ErrorCategory `gorm:"type:error_category_enum" json:"top_error_category,omitempty"`
-	WeakKnowledgeTop   JSONB         `gorm:"type:jsonb" json:"weak_knowledge_top,omitempty"`
-	CreatedAt          time.Time     `gorm:"not null;default:now()" json:"created_at"`
+	ID                          int64          `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID                      int64          `gorm:"not null;index" json:"user_id"`
+	WeekNumber                  int            `gorm:"not null" json:"week_number"`
+	WeekStart                   time.Time      `gorm:"type:date;not null" json:"week_start"`
+	WeekEnd                     time.Time      `gorm:"type:date;not null" json:"week_end"`
+	NewQuestions                int            `gorm:"not null;default:0" json:"new_questions"`
+	MasteredQuestions           int            `gorm:"not null;default:0" json:"mastered_questions"`
+	ReviewCount                 int            `gorm:"not null;default:0" json:"review_count"`
+	ReviewAccuracy              float64        `gorm:"type:decimal(5,2);not null;default:0.00" json:"review_accuracy"`
+	PrevWeekNew                 *int           `json:"prev_week_new,omitempty"`
+	PrevWeekMastered            *int           `json:"prev_week_mastered,omitempty"`
+	TopErrorCategory            *ErrorCategory `gorm:"type:error_category_enum" json:"top_error_category,omitempty"`
+	TopErrorCategoryPercentage  float64        `gorm:"type:decimal(5,2);not null;default:0.00" json:"top_error_category_percentage,omitempty"`
+	WeakKnowledgeTop            JSONB          `gorm:"type:jsonb" json:"weak_knowledge_top,omitempty"`
+	CreatedAt                   time.Time      `gorm:"not null;default:now()" json:"created_at"`
 }
 
 func (WeeklyReport) TableName() string { return "weekly_reports" }

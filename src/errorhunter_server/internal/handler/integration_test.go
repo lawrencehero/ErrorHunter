@@ -17,6 +17,7 @@ import (
 	"github.com/errorhunter/errorhunter-server/internal/handler"
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
 	jwtPkg "github.com/errorhunter/errorhunter-server/internal/pkg/jwt"
+	"github.com/errorhunter/errorhunter-server/internal/pkg/sms"
 	"github.com/errorhunter/errorhunter-server/internal/repository"
 	"github.com/errorhunter/errorhunter-server/internal/service"
 	"github.com/gin-gonic/gin"
@@ -96,8 +97,8 @@ func TestMain(m *testing.M) {
 	reportRepo := repository.NewWeeklyReportRepository(testDB)
 
 	// 初始化 Service
-	authService := service.NewAuthService(userRepo, testRedis, testJWTMgr, cfg.OTP)
-	questionService := service.NewQuestionService(questionRepo, userRepo)
+	authService := service.NewAuthService(userRepo, testRedis, testJWTMgr, cfg.OTP, &sms.MockProvider{})
+	questionService := service.NewQuestionService(questionRepo, userRepo, testDB)
 	reviewService := service.NewReviewService(questionRepo, reviewRepo, userRepo)
 
 	// 初始化 Handler
@@ -466,6 +467,34 @@ func TestIntegration_DashboardAfterCreatingQuestions(t *testing.T) {
 	}
 }
 
+// TestIntegration_DashboardWeeklyCompletedField 验证 Dashboard 返回 weekly_completed 字段
+// 契约：长度恒为 7（周一~周日），元素为 bool；今天之前已复习的天为 true，未复习/未来天为 false。
+func TestIntegration_DashboardWeeklyCompletedField(t *testing.T) {
+	phone := "13800003002"
+	token := registerAndLogin(t, phone)
+
+	w := doReq("GET", "/v1/reports", nil, token)
+	require.Equal(t, http.StatusOK, w.Code, "Dashboard应返回200, got: %s", w.Body.String())
+
+	resp := parseResp(t, w)
+	data, ok := resp["data"].(map[string]interface{})
+	require.True(t, ok, "响应缺少 data 字段")
+
+	weekly, ok := data["weekly_completed"].([]interface{})
+	require.True(t, ok, "Dashboard应返回 weekly_completed 数组, got: %T", data["weekly_completed"])
+	require.Len(t, weekly, 7, "weekly_completed 长度应为7（周一~周日）")
+	for i, v := range weekly {
+		_, isBool := v.(bool)
+		assert.True(t, isBool, "weekly_completed[%d] 应为 bool, got %T", i, v)
+	}
+	// 仅录题未复习 → 今天不应被打卡（复习动作才算）
+	todayIdx := int(time.Now().Weekday())
+	if todayIdx == 0 {
+		todayIdx = 7 // Sunday(0) → 7
+	}
+	assert.False(t, weekly[todayIdx-1].(bool), "未复习时今天不应打卡")
+}
+
 // ============================================================
 // 复习流程集成测试
 // ============================================================
@@ -490,6 +519,65 @@ func TestIntegration_ReviewFlow(t *testing.T) {
 	}, token)
 	// 可能是200或400（如果该题不在今日复习计划中）
 	t.Logf("提交复习结果: status=%d, body=%s", w.Code, w.Body.String())
+}
+
+// TestIntegration_ReviewTogglesWeeklyCompleted 验证完成复习后，本周打卡当天变 true。
+// 打卡语义只认 review_records（复习动作），录题不计入。
+func TestIntegration_ReviewTogglesWeeklyCompleted(t *testing.T) {
+	phone := "13800004002"
+	token := registerAndLogin(t, phone)
+
+	// 1. 录题后、未复习前，今天打卡应为 false，streak_days 应为 0
+	w := doReq("GET", "/v1/reports", nil, token)
+	require.Equal(t, http.StatusOK, w.Code)
+	data := parseResp(t, w)["data"].(map[string]interface{})
+	weeklyBefore := data["weekly_completed"].([]interface{})
+	require.Len(t, weeklyBefore, 7)
+	todayIdx := int(time.Now().Weekday())
+	if todayIdx == 0 {
+		todayIdx = 7
+	}
+	assert.False(t, weeklyBefore[todayIdx-1].(bool), "录题未复习时今天不应打卡")
+	greetingBefore := data["greeting"].(map[string]interface{})
+	streakBefore := int(greetingBefore["streak_days"].(float64))
+	assert.Equal(t, 0, streakBefore, "未复习时连续打卡天数应为 0")
+
+	// 2. 创建错题并提交复习结果
+	qID := createQuestion(t, token, []int{1})
+	w = doReq("POST", "/v1/reviews/result", map[string]interface{}{
+		"question_id": qID,
+		"self_rating": "MASTERED",
+	}, token)
+	require.Equal(t, http.StatusOK, w.Code, "提交复习应成功: %s", w.Body.String())
+
+	// 3. 复习后，今天打卡应变 true，streak_days 应升为 1
+	w = doReq("GET", "/v1/reports", nil, token)
+	require.Equal(t, http.StatusOK, w.Code)
+	data = parseResp(t, w)["data"].(map[string]interface{})
+	weeklyAfter := data["weekly_completed"].([]interface{})
+	require.Len(t, weeklyAfter, 7)
+	assert.True(t, weeklyAfter[todayIdx-1].(bool), "复习后今天应打卡")
+	// 未来天仍为 false
+	for i := todayIdx; i < 7; i++ {
+		assert.False(t, weeklyAfter[i].(bool), "未来天 %d 不应打卡", i)
+	}
+	greetingAfter := data["greeting"].(map[string]interface{})
+	streakAfter := int(greetingAfter["streak_days"].(float64))
+	assert.Equal(t, 1, streakAfter, "首次复习后连续打卡天数应为 1")
+
+	// 4. 再次复习另一道题：同一天内 streak 不应叠加（仍为 1）
+	qID2 := createQuestion(t, token, []int{1})
+	w = doReq("POST", "/v1/reviews/result", map[string]interface{}{
+		"question_id": qID2,
+		"self_rating": "MASTERED",
+	}, token)
+	require.Equal(t, http.StatusOK, w.Code, "提交第二题复习应成功: %s", w.Body.String())
+	w = doReq("GET", "/v1/reports", nil, token)
+	require.Equal(t, http.StatusOK, w.Code)
+	data = parseResp(t, w)["data"].(map[string]interface{})
+	greetingAfter2 := data["greeting"].(map[string]interface{})
+	streakAfter2 := int(greetingAfter2["streak_days"].(float64))
+	assert.Equal(t, 1, streakAfter2, "同一天多次复习 streak 不应叠加")
 }
 
 // ============================================================

@@ -45,10 +45,15 @@ class EHBottomNavBar extends StatelessWidget {
     final isGlass = ext.headerStyle == HeaderStyle.transparent;
     final inactiveColor = isGlass ? Colors.white.withOpacity(0.5) : AppColors.textTertiary;
     final activeColor = isGlass ? Colors.white : AppColors.brandPrimary;
+    // 玻璃下选中态强调色提亮为暖琥珀（避免蓝色叠渐变背景）
+    final activeAccent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
 
     return Container(
       decoration: BoxDecoration(
         color: isGlass ? Colors.white.withOpacity(0.08) : Colors.white,
+        border: isGlass
+            ? Border(top: BorderSide(color: Colors.white.withOpacity(0.15), width: 1))
+            : null,
         boxShadow: isGlass
             ? null
             : [
@@ -68,11 +73,11 @@ class EHBottomNavBar extends StatelessWidget {
               // 5个位置：[0] [1] [FAB占位] [2] [3]
               Row(
                 children: [
-                  _buildTab(0, isGlass, inactiveColor, activeColor),
-                  _buildTab(1, isGlass, inactiveColor, activeColor),
+                  _buildTab(0, isGlass, inactiveColor, activeColor, activeAccent),
+                  _buildTab(1, isGlass, inactiveColor, activeColor, activeAccent),
                   const SizedBox(width: 60), // FAB 占位
-                  _buildTab(2, isGlass, inactiveColor, activeColor),
-                  _buildTab(3, isGlass, inactiveColor, activeColor),
+                  _buildTab(2, isGlass, inactiveColor, activeColor, activeAccent),
+                  _buildTab(3, isGlass, inactiveColor, activeColor, activeAccent),
                 ],
               ),
               // 居中浮动按钮
@@ -104,7 +109,7 @@ class EHBottomNavBar extends StatelessWidget {
     );
   }
 
-  Widget _buildTab(int index, bool isGlass, Color inactiveColor, Color activeColor) {
+  Widget _buildTab(int index, bool isGlass, Color inactiveColor, Color activeColor, Color activeAccent) {
     final item = items[index];
     // 映射：item 0→tab 0, item 1→tab 1, item 2→tab 3(周报), item 3→tab 4(我的)
     // currentIndex 映射：0=首页, 1=错题本, 2=周报, 3=我的
@@ -121,7 +126,7 @@ class EHBottomNavBar extends StatelessWidget {
               width: 36, height: 36,
               decoration: BoxDecoration(
                 color: isActive
-                    ? (isGlass ? AppColors.brandPrimary.withOpacity(0.3) : AppColors.brandPrimaryPale)
+                    ? (isGlass ? activeAccent.withOpacity(0.28) : AppColors.brandPrimaryPale)
                     : Colors.transparent,
                 shape: BoxShape.circle,
               ),

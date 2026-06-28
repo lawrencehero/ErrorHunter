@@ -95,6 +95,12 @@ func (h *QuestionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// 至少一个知识点（knowledge_point_ids 或 knowledge_points）
+	if len(req.KnowledgePointIDs) == 0 && len(req.KnowledgePoints) == 0 {
+		respondError(c, errcode.EParamValidation.WithData("knowledge_point_ids or knowledge_points is required"))
+		return
+	}
+
 	question, err := h.questionService.Create(c.Request.Context(), userID, req)
 	if err != nil {
 		if appErr, ok := err.(*errcode.AppError); ok {

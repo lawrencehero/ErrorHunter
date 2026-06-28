@@ -3,6 +3,7 @@ library;
 
 import 'package:equatable/equatable.dart';
 import 'knowledge_point_model.dart';
+import '../../../utils/image_url_helper.dart';
 
 /// 错因分类枚举
 enum ErrorCategory {
@@ -197,7 +198,7 @@ class QuestionModel extends Equatable {
       'status': status.code,
       'knowledge_points': knowledgePoints.map((k) => k.toJson()).toList(),
       'custom_tags': customTags,
-      'current_review_round': currentReviewRound,
+      'review_round': currentReviewRound,
       'total_review_rounds': totalReviewRounds,
       'created_at': createdAt.toIso8601String(),
       if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
@@ -207,9 +208,12 @@ class QuestionModel extends Equatable {
   }
 
   factory QuestionModel.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'];
     return QuestionModel(
-      id: json['id'] as String,
-      imageUrl: json['image_url'] as String,
+      id: rawId is int ? rawId.toString() : rawId as String,
+      // 后端存的 image_url 可能是录入时的旧 host（如内网 IP），在 web/不同环境不可达。
+      // 解析时统一归一化到当前后端 host，列表/详情/预览/复习卡所有展示点自动生效。
+      imageUrl: normalizeImageUrl(json['image_url'] as String),
       ocrText: json['ocr_text'] as String?,
       myAnswer: json['my_answer'] as String?,
       correctAnswer: json['correct_answer'] as String?,
@@ -222,7 +226,10 @@ class QuestionModel extends Equatable {
               .toList() ??
           [],
       customTags: List<String>.from(json['custom_tags'] ?? []),
-      currentReviewRound: json['current_review_round'] as int? ?? 0,
+      // 后端 json tag 为 "review_round"（model.Question.ReviewRound）。
+      // 保留对旧 key "current_review_round" 的 fallback，防御缓存的旧 JSON / 本地序列化。
+      currentReviewRound:
+          (json['review_round'] ?? json['current_review_round']) as int? ?? 0,
       totalReviewRounds: json['total_review_rounds'] as int? ?? 5,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: json['updated_at'] != null

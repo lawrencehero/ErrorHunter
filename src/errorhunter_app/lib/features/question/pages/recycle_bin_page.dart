@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 import '../../../widgets/common/cards/base_card.dart';
 import '../../../widgets/common/dialogs/confirm_dialog.dart';
@@ -69,11 +70,12 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
-    // TODO: 从 DatabaseHelper.getRecycleBinQuestions() 加载真实数据
+    // TODO: QuestionRepository 接口尚未添加 recycle bin 方法，
+    //       待后端就绪后替换为 repository.getRecycleBinItems()
     await Future.delayed(const Duration(milliseconds: 400));
 
     setState(() {
-      _items = _generateMockItems();
+      _items = []; // TODO: 替换为真实数据源
       _isLoading = false;
     });
   }
@@ -172,6 +174,8 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -183,17 +187,21 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
         ),
         title: Text(
           '回收站',
-          style: AppTypography.primary.h2.copyWith(color: AppColors.textPrimary),
+          style: AppTypography.primary.h2.copyWith(color: tc.primary),
         ),
         centerTitle: true,
         actions: [
           if (_items.isNotEmpty)
             TextButton.icon(
               onPressed: _clearAll,
-              icon: const Icon(Icons.delete_sweep, size: 18, color: AppColors.danger),
-              label: const Text(
+              icon: Icon(Icons.delete_sweep,
+                  size: 18,
+                  color: isGlass ? const Color(0xFFFF8A80) : AppColors.danger),
+              label: Text(
                 '清空',
-                style: TextStyle(color: AppColors.danger, fontSize: 14),
+                style: TextStyle(
+                    color: isGlass ? const Color(0xFFFF8A80) : AppColors.danger,
+                    fontSize: 14),
               ),
             ),
         ],
@@ -203,8 +211,11 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
   }
 
   Widget _buildBody() {
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.brandPrimary));
+      return Center(child: CircularProgressIndicator(color: accentColor));
     }
 
     if (_items.isEmpty) {
@@ -233,6 +244,10 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   /// 空状态
   Widget _buildEmptyState() {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Center(
       child: EHBaseCard(
         padding: EdgeInsets.symmetric(
@@ -246,27 +261,29 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppColors.background,
+                color: isGlass
+                    ? Colors.white.withOpacity(0.12)
+                    : AppColors.background,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.delete_outline,
                 size: 48,
-                color: AppColors.textTertiary,
+                color: isGlass ? accentColor : AppColors.textTertiary,
               ),
             ),
             SizedBox(height: AppSpacing.base),
             Text(
               '回收站为空',
               style: AppTypography.primary.h3.copyWith(
-                color: AppColors.textSecondary,
+                color: tc.primary,
               ),
             ),
             SizedBox(height: AppSpacing.xs),
             Text(
               '删除的错题会在这里保留30天',
               style: AppTypography.primary.caption.copyWith(
-                color: AppColors.textTertiary,
+                color: tc.secondary,
               ),
             ),
           ],
@@ -277,27 +294,40 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   /// 30天自动清理提示横幅
   Widget _buildRetentionBanner() {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accentColor =
+        isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
         horizontal: AppSpacing.pagePaddingHorizontal,
         vertical: AppSpacing.sm,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFFF8E1),
+      decoration: BoxDecoration(
+        color: isGlass
+            ? accentColor.withOpacity(0.18)
+            : const Color(0xFFFFF8E1),
         border: Border(
-          bottom: BorderSide(color: Color(0xFFFFE082), width: 0.5),
+          bottom: BorderSide(
+            color: isGlass
+                ? Colors.white.withOpacity(0.25)
+                : const Color(0xFFFFE082),
+            width: 0.5,
+          ),
         ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.info_outline, size: 16, color: Color(0xFFF9A825)),
+          Icon(Icons.info_outline,
+              size: 16,
+              color: isGlass ? accentColor : const Color(0xFFF9A825)),
           SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               '删除的错题将在30天后自动永久清除',
               style: AppTypography.primary.caption.copyWith(
-                color: const Color(0xFF795548),
+                color: isGlass ? tc.primary : const Color(0xFF795548),
               ),
             ),
           ),
@@ -308,6 +338,11 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   /// 可滑动删除/恢复的列表项
   Widget _buildDismissibleItem(_RecycleBinItem item) {
+    final isGlass = context.themeExt.isDarkBackground;
+    final successColor =
+        isGlass ? const Color(0xFF81C784) : AppColors.success;
+    final dangerColor =
+        isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
     return Dismissible(
       key: Key(item.id),
       direction: DismissDirection.horizontal,
@@ -316,13 +351,15 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
         alignment: Alignment.centerLeft,
         icon: Icons.restore,
         label: '恢复',
-        color: AppColors.success,
+        color: successColor,
+        isGlass: isGlass,
       ),
       secondaryBackground: _buildSwipeBackground(
         alignment: Alignment.centerRight,
         icon: Icons.delete_forever,
         label: '永久删除',
-        color: AppColors.danger,
+        color: dangerColor,
+        isGlass: isGlass,
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
@@ -345,12 +382,13 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
     required IconData icon,
     required String label,
     required Color color,
+    required bool isGlass,
   }) {
     return Container(
       alignment: alignment,
       padding: EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withOpacity(isGlass ? 0.28 : 0.15),
         borderRadius: AppRadius.radiusLg,
       ),
       child: Column(
@@ -372,6 +410,8 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   /// 列表项卡片
   Widget _buildItemCard(_RecycleBinItem item) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
     return EHBaseCard(
       padding: AppSpacing.cardPadding,
       child: Row(
@@ -381,7 +421,8 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.errorCategoryColor(item.errorCategory).withOpacity(0.12),
+              color: AppColors.errorCategoryColor(item.errorCategory)
+                  .withOpacity(isGlass ? 0.22 : 0.12),
               borderRadius: AppRadius.radiusMd,
             ),
             child: Center(
@@ -402,7 +443,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.primary.body.copyWith(
-                    color: AppColors.textPrimary,
+                    color: tc.primary,
                   ),
                 ),
                 SizedBox(height: AppSpacing.xs),
@@ -425,17 +466,19 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   /// 小标签
   Widget _buildTag(String text) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: isGlass ? Colors.white.withOpacity(0.12) : AppColors.background,
         borderRadius: AppRadius.radiusSm,
       ),
       child: Text(
         text,
         style: AppTypography.primary.caption.copyWith(
           fontSize: 11,
-          color: AppColors.textSecondary,
+          color: tc.secondary,
         ),
       ),
     );
@@ -443,20 +486,24 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   /// 剩余天数标签（紧急时变红）
   Widget _buildRemainingDaysTag(int days) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
     final isUrgent = days <= 3;
+    final dangerColor =
+        isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: isUrgent
-            ? AppColors.danger.withOpacity(0.1)
-            : AppColors.background,
+            ? dangerColor.withOpacity(isGlass ? 0.2 : 0.1)
+            : (isGlass ? Colors.white.withOpacity(0.12) : AppColors.background),
         borderRadius: AppRadius.radiusSm,
       ),
       child: Text(
         '剩余${days}天',
         style: AppTypography.primary.caption.copyWith(
           fontSize: 11,
-          color: isUrgent ? AppColors.danger : AppColors.textTertiary,
+          color: isUrgent ? dangerColor : tc.tertiary,
           fontWeight: isUrgent ? FontWeight.w600 : FontWeight.w400,
         ),
       ),

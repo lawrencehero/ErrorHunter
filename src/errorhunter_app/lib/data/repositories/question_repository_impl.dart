@@ -4,6 +4,7 @@ library;
 
 import '../../domain/repositories/question_repository.dart';
 import '../../features/question/models/question_model.dart';
+import '../../features/question/models/ocr_result.dart';
 import '../remote/question_remote_data_source.dart';
 
 /// Question Repository 的真实实现
@@ -49,6 +50,6 @@ class QuestionRepositoryImpl implements QuestionRepository {
       _dataSource.deleteQuestion(id);
 
   @override
-  Future<String> ocrImage(String imagePath) =>
+  Future<OcrResult> ocrImage(String imagePath) =>
       _dataSource.ocrImage(imagePath);
 }

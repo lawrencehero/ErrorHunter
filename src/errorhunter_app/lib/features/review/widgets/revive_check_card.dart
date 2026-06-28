@@ -7,6 +7,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 
 /// 复活检测卡片标签
 class ReviveCheckCard extends StatelessWidget {
@@ -19,6 +20,7 @@ class ReviveCheckCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
@@ -62,7 +64,7 @@ class ReviveCheckCard extends StatelessWidget {
                 Text(
                   '消灭已 $daysSinceMastered 天，确认还记得吗？',
                   style: AppTypography.primary.caption.copyWith(
-                    color: AppColors.textSecondary,
+                    color: tc.secondary,
                     fontSize: 11,
                   ),
                 ),

@@ -50,3 +50,9 @@ coverage.html
 # Android local config (machine-specific)
 **/local.properties
 **/.metadata
+
+# Local web-test artifacts (Chrome profiles created by flutter run)
+.tmp/
+
+# Stray compiled binaries
+*.exe

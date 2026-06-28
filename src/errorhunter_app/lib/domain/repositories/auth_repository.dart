@@ -13,10 +13,11 @@ abstract class AuthRepository {
   Future<void> sendOtp(String phone);
 
   /// 验证 OTP 并返回用户信息
+  /// grade 为 null 时走"已注册用户登录"路径
   Future<AuthUser> verifyOtp({
     required String phone,
     required String otp,
-    required String grade,
+    String? grade,
   });
 
   /// 更新昵称

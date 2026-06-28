@@ -8,6 +8,7 @@ import '../../../theme/radius.dart';
 import '../../../theme/shadows.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 
 /// 趋势方向
 enum EHTrendDirection { up, down, neutral }
@@ -52,13 +53,21 @@ class EHStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final resolvedAccent = accentColor ?? AppColors.brandPrimary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: isGlass
+              ? Colors.white.withOpacity(0.12)
+              : AppColors.surface,
           borderRadius: AppRadius.radiusLg,
-          boxShadow: AppShadows.elevation2,
+          border: isGlass
+              ? Border.all(color: Colors.white.withOpacity(0.25))
+              : null,
+          boxShadow: isGlass ? null : AppShadows.elevation2,
         ),
         clipBehavior: Clip.antiAlias,
         child: IntrinsicHeight(
@@ -92,14 +101,13 @@ class EHStatCard extends StatelessWidget {
                               width: 28,
                               height: 28,
                               decoration: BoxDecoration(
-                                color: (accentColor ?? AppColors.brandPrimary)
-                                    .withOpacity(0.1),
+                                color: resolvedAccent.withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
                                 icon,
                                 size: 14,
-                                color: accentColor ?? AppColors.brandPrimary,
+                                color: resolvedAccent,
                               ),
                             ),
                             SizedBox(width: AppSpacing.sm),
@@ -108,7 +116,7 @@ class EHStatCard extends StatelessWidget {
                             child: Text(
                               label,
                               style: AppTypography.primary.caption.copyWith(
-                                color: AppColors.textSecondary,
+                                color: tc.secondary,
                                 fontWeight: FontWeight.w500,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -121,13 +129,13 @@ class EHStatCard extends StatelessWidget {
                       Text(
                         value,
                         style: AppTypography.primary.number.copyWith(
-                          color: valueColor ?? AppColors.textPrimary,
+                          color: valueColor ?? tc.primary,
                         ),
                       ),
                       // 底部：趋势
                       if (trend != null && trendValue != null) ...[
                         SizedBox(height: AppSpacing.xs),
-                        _buildTrend(),
+                        _buildTrend(isGlass),
                       ],
                     ],
                   ),
@@ -140,26 +148,26 @@ class EHStatCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTrend() {
+  Widget _buildTrend(bool isGlass) {
     Color trendColor;
     IconData trendIcon;
 
     switch (trend!) {
       case EHTrendDirection.up:
-        trendColor = AppColors.success;
+        trendColor = isGlass ? const Color(0xFF81C784) : AppColors.success;
         trendIcon = Icons.trending_up_rounded;
       case EHTrendDirection.down:
-        trendColor = AppColors.danger;
+        trendColor = isGlass ? const Color(0xFFEF9A9A) : AppColors.danger;
         trendIcon = Icons.trending_down_rounded;
       case EHTrendDirection.neutral:
-        trendColor = AppColors.textTertiary;
+        trendColor = isGlass ? Colors.white54 : AppColors.textTertiary;
         trendIcon = Icons.trending_flat_rounded;
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: trendColor.withOpacity(0.1),
+        color: trendColor.withOpacity(0.15),
         borderRadius: AppRadius.radiusFull,
       ),
       child: Row(

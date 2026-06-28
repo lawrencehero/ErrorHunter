@@ -2,10 +2,9 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"log"
-	"math/big"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/errorhunter/errorhunter-server/internal/model"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
 	jwtPkg "github.com/errorhunter/errorhunter-server/internal/pkg/jwt"
+	"github.com/errorhunter/errorhunter-server/internal/pkg/sms"
 	"github.com/errorhunter/errorhunter-server/internal/repository"
 	"github.com/redis/go-redis/v9"
 )
@@ -23,6 +23,7 @@ type AuthService struct {
 	redis       *redis.Client
 	jwtMgr      *jwtPkg.Manager
 	otpConfig   config.OTPConfig
+	smsProvider sms.Provider
 }
 
 func NewAuthService(
@@ -30,13 +31,39 @@ func NewAuthService(
 	redisClient *redis.Client,
 	jwtMgr *jwtPkg.Manager,
 	otpConfig config.OTPConfig,
+	smsProvider sms.Provider,
 ) *AuthService {
 	return &AuthService{
-		userRepo:  userRepo,
-		redis:     redisClient,
-		jwtMgr:    jwtMgr,
-		otpConfig: otpConfig,
+		userRepo:    userRepo,
+		redis:       redisClient,
+		jwtMgr:      jwtMgr,
+		otpConfig:   otpConfig,
+		smsProvider: smsProvider,
 	}
+}
+
+// normalizePhone 归一化手机号：去空格、去前缀 "+" 与 "86"，便于白名单比对
+func normalizePhone(phone string) string {
+	p := strings.TrimSpace(phone)
+	p = strings.TrimPrefix(p, "+")
+	if len(p) > 11 && strings.HasPrefix(p, "86") {
+		p = strings.TrimPrefix(p, "86")
+	}
+	return p
+}
+
+// isBypassPhone 是否为验证码白名单手机号（任意验证码可通过，跳过真实短信）
+func (s *AuthService) isBypassPhone(phone string) bool {
+	target := normalizePhone(phone)
+	if target == "" {
+		return false
+	}
+	for _, p := range s.otpConfig.BypassPhones {
+		if normalizePhone(p) == target {
+			return true
+		}
+	}
+	return false
 }
 
 // SendOTPRequest 发送验证码请求
@@ -52,44 +79,36 @@ type SendOTPResponse struct {
 }
 
 // SendOTP 发送验证码
+// 使用阿里云号码认证服务（Dypnsapi），验证码由阿里云自动生成和托管
 func (s *AuthService) SendOTP(ctx context.Context, req SendOTPRequest) (*SendOTPResponse, error) {
-	// 检查频率限制
-	resendKey := fmt.Sprintf("otp:resend:%s", req.Phone)
-	if exists, _ := s.redis.Exists(ctx, resendKey).Result(); exists > 0 {
-		return nil, errcode.ESendCodeTooFrequent
+	// 白名单号码：跳过真实短信发送，验证时任意码可通过
+	if s.isBypassPhone(req.Phone) {
+		log.Printf("[INFO] OTP bypass (whitelist) for %s, skip SMS send", req.Phone)
+		return &SendOTPResponse{
+			ExpireIn:    int(s.otpConfig.Expire),
+			ResendAfter: s.otpConfig.ResendInterval,
+		}, nil
 	}
 
-	// 检查每日限制
+	// 检查每日限制（安全兜底，Dypnsapi 自带频率限制）
 	dailyKey := fmt.Sprintf("otp:daily:%s", req.Phone)
 	dailyCount, _ := s.redis.Get(ctx, dailyKey).Int()
 	if dailyCount >= s.otpConfig.DailyLimit {
 		return nil, errcode.ESendCodeDailyLimit
 	}
 
-	// 生成6位验证码
-	code, err := generateOTP()
-	if err != nil {
+	// 发送验证码（阿里云自动生成 + 短信发送 + 托管存储）
+	if err := s.smsProvider.SendCode(ctx, req.Phone); err != nil {
+		log.Printf("[WARN] SMS send failed for %s: %v", req.Phone, err)
 		return nil, errcode.EInternalServer
 	}
-
-	// 存储验证码到Redis
-	otpKey := fmt.Sprintf("otp:code:%s:%s", req.Scene, req.Phone)
-	expireDuration := time.Duration(s.otpConfig.Expire) * time.Second
-	s.redis.Set(ctx, otpKey, code, expireDuration)
-
-	// 设置重发间隔
-	s.redis.Set(ctx, resendKey, 1, time.Duration(s.otpConfig.ResendInterval)*time.Second)
 
 	// 增加每日计数
 	s.redis.Incr(ctx, dailyKey)
 	s.redis.Expire(ctx, dailyKey, 24*time.Hour)
 
-	// TODO: 实际发送短信（调用短信服务商API）
-	// 开发环境打印到日志
-	fmt.Printf("[DEV] OTP for %s (%s): %s\n", req.Phone, req.Scene, code)
-
 	return &SendOTPResponse{
-		ExpireIn:    s.otpConfig.Expire,
+		ExpireIn:    int(s.otpConfig.Expire),
 		ResendAfter: s.otpConfig.ResendInterval,
 	}, nil
 }
@@ -129,46 +148,41 @@ type UserInfo struct {
 }
 
 // VerifyOTP 验证验证码并返回JWT
+// 使用阿里云号码认证服务（Dypnsapi）进行验证码校验
 func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*AuthResponse, error) {
-	// 检查是否被锁定
-	lockKey := fmt.Sprintf("otp:lock:%s", req.Phone)
-	if exists, _ := s.redis.Exists(ctx, lockKey).Result(); exists > 0 {
-		return nil, errcode.EVerifyCodeLocked
-	}
-
-	// 验证验证码
-	otpKey := fmt.Sprintf("otp:code:%s:%s", req.Scene, req.Phone)
-	storedCode, err := s.redis.Get(ctx, otpKey).Result()
-	if err == redis.Nil || storedCode != req.Code {
-		// 增加错误计数
-		retryKey := fmt.Sprintf("otp:retry:%s", req.Phone)
-		retryCount, _ := s.redis.Incr(ctx, retryKey).Result()
-		s.redis.Expire(ctx, retryKey, time.Duration(s.otpConfig.LockoutDuration)*time.Second)
-
-		if retryCount >= int64(s.otpConfig.MaxRetry) {
-			s.redis.Set(ctx, lockKey, 1, time.Duration(s.otpConfig.LockoutDuration)*time.Second)
-			return nil, errcode.EVerifyCodeLocked
+	// 白名单号码：跳过验证码校验，任意码通过
+	if s.isBypassPhone(req.Phone) {
+		log.Printf("[INFO] OTP bypass (whitelist) for %s, any code accepted", req.Phone)
+	} else {
+		// 通过阿里云校验验证码
+		valid, err := s.smsProvider.VerifyCode(ctx, req.Phone, req.Code)
+		if err != nil {
+			log.Printf("[WARN] SMS verify failed for %s: %v", req.Phone, err)
+			return nil, errcode.EInternalServer
 		}
-		return nil, errcode.EVerifyCodeInvalid
+		if !valid {
+			return nil, errcode.EVerifyCodeInvalid
+		}
 	}
-
-	// 删除已使用的验证码
-	s.redis.Del(ctx, otpKey)
-	s.redis.Del(ctx, fmt.Sprintf("otp:retry:%s", req.Phone))
 
 	var user *model.User
+	var err error
 
-	switch req.Scene {
-	case "REGISTER":
+	// 注册/登录合一：手机号已存在则登录，不存在则注册
+	existing, _ := s.userRepo.FindByPhone(ctx, req.Phone)
+	if existing != nil {
+		// 已注册 → 登录
+		if existing.DeletedAt != nil {
+			return nil, errcode.EAccountDeleted
+		}
+		s.userRepo.UpdateLastActive(ctx, existing.ID)
+		user = existing
+	} else {
+		// 未注册 → 创建新用户
 		user, err = s.registerUser(ctx, req)
-	case "LOGIN":
-		user, err = s.loginUser(ctx, req)
-	default:
-		return nil, errcode.EParamValidation
-	}
-
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 生成令牌对
@@ -221,12 +235,6 @@ func mapFrontendGrade(frontendGrade string) (model.Grade, error) {
 }
 
 func (s *AuthService) registerUser(ctx context.Context, req VerifyOTPRequest) (*model.User, error) {
-	// 检查手机号是否已注册
-	existing, _ := s.userRepo.FindByPhone(ctx, req.Phone)
-	if existing != nil {
-		return nil, errcode.EPhoneAlreadyRegistered
-	}
-
 	// 将前端年级数字映射为数据库 enum 值
 	dbGrade, err := mapFrontendGrade(req.Grade)
 	if err != nil {
@@ -340,18 +348,6 @@ func (s *AuthService) Logout(ctx context.Context, userID int64, accessToken stri
 	}
 
 	return nil
-}
-
-func generateOTP() (string, error) {
-	var code string
-	for i := 0; i < 6; i++ {
-		n, err := rand.Int(rand.Reader, big.NewInt(10))
-		if err != nil {
-			return "", err
-		}
-		code += fmt.Sprintf("%d", n.Int64())
-	}
-	return code, nil
 }
 
 func toUserInfo(user *model.User) *UserInfo {

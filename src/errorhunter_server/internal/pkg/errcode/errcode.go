@@ -65,6 +65,7 @@ const (
 	ErrExportLimitExceeded       = 20011
 	ErrSolutionStepInvalid       = 20012
 	ErrOcrTextTooLong            = 20013
+	ErrKnowledgePointNotFound    = 20014
 )
 
 // ===== 30000-39999 复习模块 =====
@@ -145,7 +146,7 @@ var (
 
 	// 错题模块
 	EStorageFull            = New(ErrStorageFull, "存储空间已满，请清理空间或升级", http.StatusForbidden)
-	EKnowledgePointMax      = New(ErrKnowledgePointMaxExceeded, "每道错题最多关联3个知识点", http.StatusBadRequest)
+	EKnowledgePointMax      = New(ErrKnowledgePointMaxExceeded, "每道错题最多关联10个知识点", http.StatusBadRequest)
 	EKnowledgeStageMismatch = New(ErrKnowledgeStageMismatch, "所选知识点与当前年级不匹配", http.StatusBadRequest)
 	EQuestionNotFound       = New(ErrQuestionNotFound, "错题不存在或已被删除", http.StatusNotFound)
 	ERecycleBinConfirm      = New(ErrRecycleBinConfirmRequired, "请确认清空操作，此操作不可恢复", http.StatusBadRequest)
@@ -153,7 +154,8 @@ var (
 	EErrorCategoryRequired  = New(ErrErrorCategoryRequired, "请选择错因粗分类", http.StatusBadRequest)
 	EErrorCategoryInvalid   = New(ErrErrorCategoryInvalid, "无效错因分类", http.StatusBadRequest)
 	EImageUrlRequired       = New(ErrImageUrlRequired, "题目图片URL必填", http.StatusBadRequest)
-	EQuestionBelongsToOther = New(ErrQuestionBelongsToOther, "无权操作该错题", http.StatusForbidden)
+	EQuestionBelongsToOther      = New(ErrQuestionBelongsToOther, "无权操作该错题", http.StatusForbidden)
+	EKnowledgePointNotFound      = New(ErrKnowledgePointNotFound, "部分知识点不存在", http.StatusBadRequest)
 
 	// 复习模块
 	EReviewNotDue         = New(ErrReviewQuestionNotDue, "该错题今日不在复习计划中", http.StatusBadRequest)

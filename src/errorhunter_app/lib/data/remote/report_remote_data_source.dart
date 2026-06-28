@@ -3,6 +3,7 @@
 library;
 
 import '../../features/report/models/weekly_report_model.dart';
+import '../../features/report/models/dashboard_model.dart';
 import '../remote/api_client.dart';
 import '../remote/api_endpoints.dart';
 
@@ -11,6 +12,16 @@ class ReportRemoteDataSource {
   ReportRemoteDataSource({required ApiClient client}) : _client = client;
 
   final ApiClient _client;
+
+  /// 获取 Dashboard 概览数据
+  Future<DashboardData> getDashboard() async {
+    final response = await _client.get<Map<String, dynamic>>(
+      ApiEndpoints.reports,
+    );
+    final data = response.data?['data'] as Map<String, dynamic>?;
+    if (data == null) return DashboardData.empty();
+    return DashboardData.fromJson(data);
+  }
 
   /// 获取周报列表
   Future<List<WeeklySummary>> getWeeklySummaries() async {
@@ -67,14 +78,15 @@ class ReportRemoteDataSource {
         data['mastered_questions'] as int? ?? 0,
         data['prev_week_mastered'] as int?,
       ),
-      reviewCountVsLastWeek: 0, // TODO: 后端补充上周复习次数
+      reviewCountVsLastWeek: 0, // TODO: 后端待补充 prev_week_review_count 字段，当前暂用 0 占位
       accuracyRate: (data['review_accuracy'] as num?)?.toDouble() ?? 0.0,
-      accuracyRateVsLastWeek: 0.0, // TODO: 后端补充上周正确率
-      achievements: const [], // TODO: 后端补充成就数据
+      accuracyRateVsLastWeek: 0.0, // TODO: 后端待补充 prev_week_accuracy 字段，当前暂用 0.0 占位
+      achievements: const [], // TODO: 后端待补充 achievements 列表接口，当前返回空数组
       topKnowledgePoints: _parseTopKnowledge(data['weak_knowledge_top']),
       mostFrequentErrorCategory:
           data['top_error_category'] as String? ?? 'UNKNOWN',
-      mostFrequentErrorPercentage: 0.0, // TODO: 后端补充占比
+      mostFrequentErrorPercentage:
+          (data['top_error_category_percentage'] as num?)?.toDouble() ?? 0.0,
     );
   }
 

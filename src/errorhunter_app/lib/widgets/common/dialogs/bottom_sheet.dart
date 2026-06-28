@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 
 /// 底部抽屉
@@ -52,11 +53,18 @@ class EHBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isGlass = context.themeExt.isDarkBackground;
+    final tc = context.textColors;
     return Container(
       constraints: maxHeight != null ? BoxConstraints(maxHeight: maxHeight!) : null,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: isGlass
+            ? Colors.white.withOpacity(0.12)
+            : AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+        border: isGlass
+            ? Border.all(color: Colors.white.withOpacity(0.25))
+            : null,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -68,7 +76,9 @@ class EHBottomSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.border,
+                color: isGlass
+                    ? Colors.white.withOpacity(0.4)
+                    : AppColors.border,
                 borderRadius: AppRadius.radiusFull,
               ),
             ),
@@ -88,7 +98,7 @@ class EHBottomSheet extends StatelessWidget {
                     child: Text(
                       title!,
                       style: AppTypography.primary.h3.copyWith(
-                        color: AppColors.textPrimary,
+                        color: tc.primary,
                       ),
                     ),
                   ),
@@ -97,7 +107,7 @@ class EHBottomSheet extends StatelessWidget {
                     child: Icon(
                       Icons.close_rounded,
                       size: 24,
-                      color: AppColors.textSecondary,
+                      color: tc.secondary,
                     ),
                   ),
                 ],

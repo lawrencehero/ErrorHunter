@@ -13,6 +13,7 @@ import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../widgets/common/buttons/primary_button.dart';
 import '../../../widgets/common/dialogs/snackbar.dart';
 import '../../../widgets/common/inputs/phone_input.dart';
@@ -143,8 +144,11 @@ class _RegisterPageState extends State<RegisterPage> {
         _isLoading = state is AuthLoading;
       },
       builder: (context, state) {
+        final tc = context.textColors;
+        final isGlass = context.themeExt.isDarkBackground;
+        final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: Colors.transparent,
           body: SafeArea(
             child: GestureDetector(
               onTap: () => FocusScope.of(context).unfocus(),
@@ -161,7 +165,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     width: 72,
                     height: 72,
                     decoration: BoxDecoration(
-                      color: AppColors.brandPrimary,
+                      color: accent,
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: const Icon(
@@ -174,7 +178,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   Text(
                     '欢迎来到错题猎手',
                     style: AppTypography.primary.h1.copyWith(
-                      color: AppColors.textPrimary,
+                      color: tc.primary,
                     ),
                   ),
                   SizedBox(height: AppSpacing.xxl),
@@ -184,7 +188,6 @@ class _RegisterPageState extends State<RegisterPage> {
                     controller: _phoneController,
                     onChanged: (digits) {
                       setState(() => _phoneDigits = digits);
-                      // 手机号满 11 位后自动聚焦到 OTP 输入框
                       if (digits.length == 11) {
                         _otpFirstFocusNode.requestFocus();
                       }
@@ -203,7 +206,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           maxLength: 6,
                           textAlign: TextAlign.center,
                           style: AppTypography.primary.h2.copyWith(
-                            color: AppColors.textPrimary,
+                            color: tc.primary,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 8,
                           ),
@@ -211,22 +214,32 @@ class _RegisterPageState extends State<RegisterPage> {
                             counterText: '',
                             hintText: '请输入验证码',
                             hintStyle: AppTypography.primary.body.copyWith(
-                              color: AppColors.textTertiary,
+                              color: tc.tertiary,
                               letterSpacing: 0,
                             ),
                             filled: true,
-                            fillColor: Colors.white,
+                            fillColor: isGlass
+                                ? Colors.white.withOpacity(0.12)
+                                : Colors.white,
                             border: OutlineInputBorder(
                               borderRadius: AppRadius.radiusMd,
-                              borderSide: const BorderSide(color: AppColors.border),
+                              borderSide: BorderSide(
+                                color: isGlass
+                                    ? Colors.white.withOpacity(0.25)
+                                    : AppColors.border,
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: AppRadius.radiusMd,
-                              borderSide: const BorderSide(color: AppColors.border),
+                              borderSide: BorderSide(
+                                color: isGlass
+                                    ? Colors.white.withOpacity(0.25)
+                                    : AppColors.border,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: AppRadius.radiusMd,
-                              borderSide: const BorderSide(color: AppColors.brandPrimary, width: 2),
+                              borderSide: BorderSide(color: accent, width: 2),
                             ),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                           ),
@@ -248,8 +261,8 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                           decoration: BoxDecoration(
                             color: _isPhoneValid && _countdownSeconds == 0
-                                ? AppColors.brandPrimary
-                                : AppColors.brandPrimary.withOpacity(0.3),
+                                ? accent
+                                : accent.withOpacity(0.3),
                             borderRadius: AppRadius.radiusMd,
                           ),
                           alignment: Alignment.center,
@@ -278,12 +291,16 @@ class _RegisterPageState extends State<RegisterPage> {
                         horizontal: AppSpacing.base,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: isGlass
+                            ? Colors.white.withOpacity(0.12)
+                            : Colors.white,
                         borderRadius: AppRadius.radiusMd,
                         border: Border.all(
                           color: _selectedGrade != null
-                              ? AppColors.brandPrimary
-                              : AppColors.border,
+                              ? accent
+                              : (isGlass
+                                  ? Colors.white.withOpacity(0.25)
+                                  : AppColors.border),
                         ),
                       ),
                       child: Row(
@@ -292,8 +309,8 @@ class _RegisterPageState extends State<RegisterPage> {
                             Icons.school_rounded,
                             size: 20,
                             color: _selectedGrade != null
-                                ? AppColors.brandPrimary
-                                : AppColors.textTertiary,
+                                ? accent
+                                : tc.tertiary,
                           ),
                           SizedBox(width: AppSpacing.sm),
                           Expanded(
@@ -303,15 +320,15 @@ class _RegisterPageState extends State<RegisterPage> {
                                   : '选择年级',
                               style: AppTypography.primary.body.copyWith(
                                 color: _selectedGrade != null
-                                    ? AppColors.textPrimary
-                                    : AppColors.textTertiary,
+                                    ? tc.primary
+                                    : tc.tertiary,
                               ),
                             ),
                           ),
                           Icon(
                             Icons.arrow_forward_ios_rounded,
                             size: 16,
-                            color: AppColors.textTertiary,
+                            color: tc.tertiary,
                           ),
                         ],
                       ),
@@ -336,13 +353,13 @@ class _RegisterPageState extends State<RegisterPage> {
                             height: 20,
                             decoration: BoxDecoration(
                               color: _agreedToTerms
-                                  ? AppColors.brandPrimary
+                                  ? accent
                                   : Colors.transparent,
                               borderRadius: AppRadius.radiusSm,
                               border: Border.all(
                                 color: _agreedToTerms
-                                    ? AppColors.brandPrimary
-                                    : AppColors.textTertiary,
+                                    ? accent
+                                    : tc.tertiary,
                               ),
                             ),
                             child: _agreedToTerms
@@ -357,31 +374,31 @@ class _RegisterPageState extends State<RegisterPage> {
                         child: RichText(
                           text: TextSpan(
                             style: AppTypography.primary.caption.copyWith(
-                              color: AppColors.textSecondary,
+                              color: tc.secondary,
                             ),
                             children: [
                               const TextSpan(text: '我已阅读并同意 '),
                               TextSpan(
                                 text: '《用户协议》',
                                 style: TextStyle(
-                                  color: AppColors.brandPrimary,
+                                  color: accent,
                                   fontWeight: FontWeight.w500,
                                 ),
                                 recognizer: TapGestureRecognizer()
                                   ..onTap = () {
-                                    // TODO: 打开用户协议页面
+                                    context.push(Routes.userAgreement);
                                   },
                               ),
                               const TextSpan(text: ' 和 '),
                               TextSpan(
                                 text: '《隐私政策》',
                                 style: TextStyle(
-                                  color: AppColors.brandPrimary,
+                                  color: accent,
                                   fontWeight: FontWeight.w500,
                                 ),
                                 recognizer: TapGestureRecognizer()
                                   ..onTap = () {
-                                    // TODO: 打开隐私政策页面
+                                    context.push(Routes.privacyPolicy);
                                   },
                               ),
                             ],
@@ -394,7 +411,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
                   // ─── Submit Button ─────────────────────────
                   EHPrimaryButton(
-                    text: '注册 / 登录',
+                    text: '注册',
                     size: EHButtonSize.lg,
                     fullWidth: true,
                     enabled: _canSubmit,
@@ -405,14 +422,22 @@ class _RegisterPageState extends State<RegisterPage> {
 
                   // ─── Already have account ──────────────────
                   GestureDetector(
-                    onTap: () {
-                      // 当前版本注册和登录合一，此链接保留用于未来扩展
-                    },
-                    child: Text(
-                      '已有账号？直接登录',
-                      style: AppTypography.primary.caption.copyWith(
-                        color: AppColors.brandPrimary,
-                        fontWeight: FontWeight.w500,
+                    onTap: () => context.push(Routes.login),
+                    child: RichText(
+                      text: TextSpan(
+                        style: AppTypography.primary.caption.copyWith(
+                          color: tc.secondary,
+                        ),
+                        children: [
+                          const TextSpan(text: '已有账号？'),
+                          TextSpan(
+                            text: '快速登录',
+                            style: TextStyle(
+                              color: accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

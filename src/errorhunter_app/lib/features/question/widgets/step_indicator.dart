@@ -8,6 +8,7 @@ import '../../../theme/gradients.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/shadows.dart';
 import '../../../theme/spacing.dart';
+import '../../../theme/theme_manager.dart';
 import '../../../theme/typography.dart';
 import '../../../theme/animations.dart';
 
@@ -27,6 +28,9 @@ class StepIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.textColors;
+    final isGlass = context.themeExt.isDarkBackground;
+    final accent = isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
       child: Column(
@@ -45,8 +49,11 @@ class StepIndicator extends StatelessWidget {
                   height: 3,
                   margin: EdgeInsets.symmetric(horizontal: 4),
                   decoration: BoxDecoration(
-                    gradient: isCompleted ? AppGradients.primary : null,
-                    color: isCompleted ? null : AppColors.border,
+                    // 玻璃下禁止品牌蓝渐变叠玻璃背景；用 accent 实色
+                    gradient: (!isGlass && isCompleted) ? AppGradients.primary : null,
+                    color: isCompleted
+                        ? (isGlass ? accent : null)
+                        : (isGlass ? Colors.white.withOpacity(0.25) : AppColors.border),
                     borderRadius: AppRadius.radiusFull,
                   ),
                 ),
@@ -62,14 +69,20 @@ class StepIndicator extends StatelessWidget {
               height: 32,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: (isCompleted || isCurrent) ? AppGradients.primary : null,
-                color: (isCompleted || isCurrent) ? null : AppColors.background,
+                // 玻璃下不用蓝色渐变；用 accent 实色填充
+                gradient: (!isGlass && (isCompleted || isCurrent)) ? AppGradients.primary : null,
+                color: (isCompleted || isCurrent)
+                    ? (isGlass ? accent : null)
+                    : (isGlass ? Colors.white.withOpacity(0.12) : AppColors.background),
                 border: (isCompleted || isCurrent)
                     ? null
-                    : Border.all(color: AppColors.border, width: 2),
-                boxShadow: isCurrent
-                    ? AppShadows.brandGlow
-                    : null,
+                    : Border.all(
+                        color: isGlass
+                            ? Colors.white.withOpacity(0.25)
+                            : AppColors.border,
+                        width: 2,
+                      ),
+                boxShadow: (!isGlass && isCurrent) ? AppShadows.brandGlow : null,
               ),
               alignment: Alignment.center,
               child: isCompleted
@@ -79,7 +92,7 @@ class StepIndicator extends StatelessWidget {
                       style: AppTypography.primary.caption.copyWith(
                         color: isCurrent
                             ? Colors.white
-                            : AppColors.textTertiary,
+                            : tc.tertiary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),

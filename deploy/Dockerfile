@@ -13,6 +13,10 @@ RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
 
 # 先复制 go mod 文件，利用 Docker 缓存层
 COPY go.mod go.sum ./
+
+# 使用国内 Go 模块代理（中国大陆网络环境）
+ENV GOPROXY=https://goproxy.cn,direct
+
 RUN go mod download && go mod verify
 
 # 复制源码
