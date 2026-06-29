@@ -30,6 +30,21 @@ abstract class QuestionRepository {
   /// 软删除错题
   Future<void> deleteQuestion(String id);
 
+  /// 回收站列表（已软删除的错题）
+  Future<List<QuestionModel>> getRecycleBin({
+    int page = 1,
+    int pageSize = 20,
+  });
+
+  /// 恢复错题（从回收站还原）
+  Future<void> restoreQuestion(String id);
+
+  /// 永久删除错题（不可恢复）
+  Future<void> permanentDeleteQuestion(String id);
+
+  /// 清空回收站，返回删除条数
+  Future<int> clearRecycleBin();
+
   /// OCR 识别图片
   Future<OcrResult> ocrImage(String imagePath);
 }

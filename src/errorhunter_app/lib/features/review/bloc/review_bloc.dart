@@ -24,12 +24,16 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     on<CompleteReview>(_onCompleteReview);
     on<CheckEliminate>(_onCheckEliminate);
     on<ResetEliminateState>(_onResetEliminateState);
+    on<ExitReview>(_onExitReview);
   }
 
   // ─── Internal State ──────────────────────────────────────
   List<QuestionModel> _questions = [];
   int _currentIndex = 0;
   DateTime? _startTime;
+  // 当前题开始作答时间，用于计算单题复习用时（review_duration_sec）。
+  // 每次切到新题（_buildInProgressState）时重置为 now。
+  DateTime? _questionStartTime;
   final Map<String, SelfEvalRating> _evaluations = {};
   int _eliminatedInSession = 0;
   bool _hasShownFirstEliminate = false;
@@ -52,6 +56,7 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     );
     _currentIndex = 0;
     _startTime = DateTime.now();
+    _questionStartTime = _startTime;
     _evaluations.clear();
     _eliminatedInSession = 0;
     _hasShownFirstEliminate = false;
@@ -95,6 +100,7 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
       _submitReviewResult(
         currentState.currentQuestion,
         event.rating,
+        reviewDurationSec: _currentQuestionDurationSec(),
       );
 
       emit(EliminateTriggered(
@@ -162,6 +168,7 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
       _submitReviewResult(
         currentState.currentQuestion,
         currentState.rating,
+        reviewDurationSec: _currentQuestionDurationSec(),
       );
     } else if (currentState is ReviewInProgress) {
       currentIndex = currentState.currentIndex;
@@ -185,9 +192,15 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
 
     final currentState = state;
 
-    // 如果在等待确认中，先提交当前评价
+    // 若当前题正处在 4 秒撤销窗口内（EvaluationPending），回看前先把该评价
+    // 确认提交。否则撤销计时器被 cancel 后，评价既不会自动确认、也不会提交，
+    // 造成"评了但没提交"的静默丢失。
     if (currentState is EvaluationPending) {
-      // 已提交的不能改
+      _submitReviewResult(
+        currentState.currentQuestion,
+        currentState.rating,
+        reviewDurationSec: _currentQuestionDurationSec(),
+      );
     }
 
     if (_currentIndex > 0) {
@@ -271,10 +284,30 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     }
   }
 
+  void _onExitReview(ExitReview event, Emitter<ReviewState> emit) {
+    // 中途退出：若仍处于撤销窗口内，先把评价确认提交，再清理计时器。
+    // 否则 _undoTimer 在 close() 时被 cancel，EvaluationPending 的评价既不
+    // 自动确认也不提交，造成"评了但没上传"的静默丢失。
+    _undoTimer?.cancel();
+    _undoTimer = null;
+
+    final currentState = state;
+    if (currentState is EvaluationPending) {
+      _submitReviewResult(
+        currentState.currentQuestion,
+        currentState.rating,
+        reviewDurationSec: _currentQuestionDurationSec(),
+      );
+    }
+    // 不 emit 新状态：page 随后会 context.go(home)，bloc 即将 dispose。
+  }
+
   // ─── Helpers ─────────────────────────────────────────────
 
   ReviewInProgress _buildInProgressState() {
     final question = _questions[_currentIndex];
+    // 切到新题重置单题计时（首题在 _onStartReview 已设置）。
+    _questionStartTime = DateTime.now();
     return ReviewInProgress(
       currentIndex: _currentIndex,
       total: _questions.length,
@@ -290,19 +323,45 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     return q.status == QuestionStatus.mastered;
   }
 
+  /// 计算当前题已用复习秒数（从 _questionStartTime 起）。
+  /// 用于提交 review_duration_sec；返回 null 当计时未启动（防御）。
+  int? _currentQuestionDurationSec() {
+    final start = _questionStartTime;
+    if (start == null) return null;
+    final sec = DateTime.now().difference(start).inSeconds;
+    return sec < 0 ? 0 : sec;
+  }
+
   int _daysSinceMastered(QuestionModel q) {
     if (!_isReviveCheck(q)) return 0;
-    // TODO: 从 reviewHistory 计算真实天数（后端返回完整数据后可移除）
-    return 14;
+    // 后端 model.Question.MasteredAt 已在 JSON 输出（mastered_at），
+    // QuestionModel.fromJson 解析为 masteredAt。据此计算真实"已消灭 N 天"，
+    // 替代原先写死的 14。未携带该字段（旧缓存/mock 缺失）时回退 14，避免文案突兀。
+    final masteredAt = q.masteredAt;
+    if (masteredAt == null) return 14;
+    final days = DateTime.now().difference(masteredAt).inDays;
+    return days < 0 ? 0 : days;
   }
 
   bool _checkShouldEliminate(QuestionModel q, SelfEvalRating rating) {
-    // ⚠️ 临时方案：用 currentReviewRound >= 3 模拟 master_count 达到阈值
-    // TODO: 后端返回真实 master_count 后，替换为 q.masterCount >= 3
-    final mockMasterCount = q.currentReviewRound >= 3 &&
-        (rating == SelfEvalRating.mastered ||
-            rating == SelfEvalRating.remembered);
-    return mockMasterCount;
+    // 复活检测题（status=MASTERED）已消灭过，走 revive_result 提交路径，
+    // 不应再触发消灭动画——否则每道复活检测题评"还记得"都会弹动画，
+    // 与"复活检测"语义冲突。复活题的"再次消灭"由后端永久消灭分支处理。
+    if (_isReviveCheck(q)) return false;
+
+    // 消灭判定以"消灭计数"为准：后端 master_count >= 3 即消灭。
+    // QuestionModel.masterCount 现已从后端 master_count 解析；旧缓存/mock
+    // 未携带时为 0，此时回退到 currentReviewRound >= 3 的近似（仅影响 mock，
+    // 真机数据以 master_count 为准）。
+    final positiveRating = rating == SelfEvalRating.mastered ||
+        rating == SelfEvalRating.remembered;
+    if (!positiveRating) return false;
+    if (q.masterCount >= 3) return true;
+    // 兼容回退：仅当后端未返回 master_count（字段缺失，如 mock）时生效。
+    // 真机数据 master_count 一定存在（model.Question.MasterCount not null），
+    // 此分支不会被命中，避免用 round 误判真实数据。
+    if (q.masterCount == 0 && q.currentReviewRound >= 3) return true;
+    return false;
   }
 
   /// 前端 SelfEvalRating → 后端 self_rating 字符串映射。
@@ -327,14 +386,46 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     }
   }
 
+  /// 前端 SelfEvalRating → 后端 revive_result 字符串映射。
+  ///
+  /// 后端 handleReviveCheck 强制要求 revive_result（REMEMBERED/FORGOTTEN），
+  /// 缺失返回 EReviveResultRequired（400）。复活检测题的"还记得/忘记"语义
+  /// 只能通过该字段传达，self_rating 在复活分支不被使用。
+  /// 非复活检测题返回 null（不传该字段）。
+  static String? _mapToReviveResult(
+      SelfEvalRating rating, bool isReviveCheck) {
+    if (!isReviveCheck) return null;
+    switch (rating) {
+      case SelfEvalRating.remembered:
+      case SelfEvalRating.mastered:
+        return 'REMEMBERED';
+      case SelfEvalRating.forgotten:
+      case SelfEvalRating.forgot:
+        return 'FORGOTTEN';
+      case SelfEvalRating.partial:
+        // 复活检测只有双按钮，不应出现 partial；保守视为忘记。
+        return 'FORGOTTEN';
+    }
+  }
+
   /// 提交单题复习结果到后端（fire-and-forget，失败仅忽略，不阻断复习流程）。
-  void _submitReviewResult(QuestionModel question, SelfEvalRating rating) {
+  ///
+  /// [reviewDurationSec] 由调用方传入当前题的复习用时（从 _startTime 或单题计时
+  /// 计算）；后端 ReviewRecord.ReviewDurationSec 据此落库，否则永久 nil。
+  void _submitReviewResult(
+    QuestionModel question,
+    SelfEvalRating rating, {
+    int? reviewDurationSec,
+  }) {
+    final isReviveCheck = _isReviveCheck(question);
     // 不 await：UI 不应被网络请求阻塞；失败也不影响本地复习体验。
     _reviewRepository
         .submitReviewResult(
           questionId: question.id,
           selfRating: _mapToBackendRating(rating),
-          isReviveCheck: _isReviveCheck(question),
+          reviewDurationSec: reviewDurationSec,
+          isReviveCheck: isReviveCheck,
+          reviveResult: _mapToReviveResult(rating, isReviveCheck),
         )
         .catchError((_) {
           // 静默忽略：复习体验优先，dashboard 刷新容错由后端兜底。

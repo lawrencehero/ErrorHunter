@@ -52,6 +52,21 @@ func (r *ReviewRecordRepository) ListByUser(ctx context.Context, userID int64, p
 	return records, total, err
 }
 
+// ListByQuestion 按错题取最近 N 条复习记录（倒序），用于错题详情"复习历史"。
+// limit<=0 时返回空切片（防御性，调用方应传正数如 20）。
+func (r *ReviewRecordRepository) ListByQuestion(ctx context.Context, questionID int64, limit int) ([]model.ReviewRecord, error) {
+	if limit <= 0 {
+		return []model.ReviewRecord{}, nil
+	}
+	records := make([]model.ReviewRecord, 0, limit)
+	err := r.db.WithContext(ctx).
+		Where("question_id = ?", questionID).
+		Order("reviewed_at DESC").
+		Limit(limit).
+		Find(&records).Error
+	return records, err
+}
+
 // GetStatsByDateRange 获取日期范围内的统计
 type ReviewStats struct {
 	TotalReviews int

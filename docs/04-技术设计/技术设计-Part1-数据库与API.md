@@ -601,184 +601,272 @@ INSERT INTO knowledge_points (parent_id, name, level, stage, keywords, sort_orde
 
 # 第2章：API接口设计
 
+> 本章为**实现事实文档**：以 `src/errorhunter_server/cmd/server/main.go` 路由注册 +
+> `internal/handler/*.go` + `internal/service/*.go` 的实际行为为权威。前端
+> `src/errorhunter_app/lib/data/remote/api_endpoints.dart` 与后端一致，无契约偏离。
+> 凡历史设计稿曾出现但后端未实现的端点（`/auth/register`、`/auth/login`、
+> `/auth/send-code`、`/users/profile`、`/images/upload-url`、`/images/signed-url`、
+> `/reviews/today`、`/reviews/complete`、`/reviews/revive-check`、`/reports/dashboard`、
+> `/sync/upload`、`/sync/status`、`/sync/retry` 等）均已下线，不再列入。
+
 ## 2.0 全局约定
 
 ### 基础URL
 
 ```
-开发环境：https://api-dev.errorhunter.com/v1
+开发环境：http://localhost:8080/v1   （或部署域名 + /v1 前缀）
 生产环境：https://api.errorhunter.com/v1
 ```
+
+> 后端 Gin 路由组为 `/v1`，所有端点（除 `/health` 外）均挂在该组下。
 
 ### 认证方式
 
 ```
-Authorization: Bearer <JWT_TOKEN>
+Authorization: Bearer <access_token>
 ```
 
-- Token有效期：30天（FR-001-7）
-- Refresh Token有效期：90天
-- 所有需认证接口返回401当Token过期或无效
+- Access Token 由 `/auth/otp/verify` 或 `/auth/refresh` 返回；过期需用 refresh_token 刷新。
+- 中间件 `middleware.Auth` 校验 JWT，失败返回 `90005(401)`。
+- 登出会把当前 access_token 加入 Redis 黑名单、删除 refresh_token。
+- `/v1/files/*key` 与 `/health` **无需认证**（objectKey 含 UUID 不可猜测）。
 
 ### 统一响应格式
 
-成功：`{"code": 0, "message": "success", "data": {...}}`
+成功（`respondSuccess`，HTTP 200）：
 
-错误：`{"code": 10001, "message": "手机号格式不正确", "data": null}`
+```json
+{ "code": 0, "message": "success", "data": { ... } }
+```
+
+创建成功（`respondCreated`，HTTP 201）：
+
+```json
+{ "code": 0, "message": "created", "data": { ... } }
+```
+
+错误（`respondError`，HTTP 由错误码定义）：
+
+```json
+{ "code": 10002, "message": "验证码错误或已过期", "data": null }
+```
+
+> 注意：除 `/auth/otp/verify` 内联返回 `"message":"success"` 外，其余成功响应统一 `message:"success"`；
+> 写操作（删除/恢复/清空/更新设置/注销）的 `data` 通常为 `{ "message": "..." }` 文案对象，非资源对象。
 
 ### 分页约定
 
 请求：`GET /v1/questions?page=1&page_size=20`
 
-响应data含：`{"list": [...], "pagination": {"page": 1, "page_size": 20, "total": 156}}`
+响应 data 含：
+
+```json
+{ "list": [...], "pagination": { "page": 1, "page_size": 20, "total": 156 } }
+```
+
+> 不同端点的分页键名以各端点实际为准：questions 列表用 `list`+`pagination`；
+> reviews 历史用 `list`+`pagination`；reports/weekly 列表用 `items`+`pagination`。
 
 ### 通用HTTP状态码
 
 | 状态码 | 含义 | 场景 |
 |--------|------|------|
-| 200 | OK | GET/PUT/PATCH成功 |
-| 201 | Created | POST创建成功 |
-| 204 | No Content | DELETE成功 |
+| 200 | OK | GET / PUT / POST（非创建）/ DELETE 成功 |
+| 201 | Created | POST 创建错题成功（`/questions`） |
 | 400 | Bad Request | 参数校验失败 |
-| 401 | Unauthorized | Token无效/过期 |
-| 403 | Forbidden | 无权访问 |
+| 401 | Unauthorized | Token 无效/过期/未登录 |
+| 403 | Forbidden | 无权访问 / 账号已注销 |
 | 404 | Not Found | 资源不存在 |
-| 409 | Conflict | 资源冲突 |
-| 429 | Too Many Requests | 限流 |
+| 409 | Conflict | 资源冲突（如重复复习） |
+| 429 | Too Many Requests | 限流 / 验证码频率限制 |
 | 500 | Internal Server Error | 服务端异常 |
+| 503 | Service Unavailable | 图片服务（MinIO/OSS）不可用 |
+
+> 注意：后端**未使用 204 No Content**。删除类端点一律返回 200 + `{code:0, message, data:{message:...}}`。
 
 ---
 
-## 2.1 用户认证模块
+## 2.1 认证模块
 
-### 2.1.1 POST /auth/register — 用户注册
+### 2.1.1 POST /auth/otp/send — 发送验证码
 
-**描述：** 新用户手机号+验证码注册（FR-100）
+**描述：** 注册/登录合一，先发验证码。支持白名单号码（任意码可通过，跳过真实短信）。
 
 | 参数位置 | 字段 | 类型 | 必填 | 校验 | 说明 |
 |---------|------|------|------|------|------|
-| Body | phone | string | Y | `^1[3-9]\d{9}$` | 11位手机号 |
-| Body | verify_code | string | Y | `^\d{6}$` | 6位验证码 |
-| Body | grade | string | Y | 31-34/71-73 | 年级 |
-| Body | parent_consent | bool | Y | 必须true | 家长同意(FR-001-3) |
-| Body | nickname | string | N | 2-12字符 | 不填自动生成 |
+| Body | phone | string | Y | 11位手机号 | 归一化去 `+`/`86` 前缀后比对白名单 |
+| Body | scene | string | Y | REGISTER / LOGIN | 业务场景 |
 
-**成功(201)：**
+**成功(200)：**
+```json
+{ "code": 0, "message": "success", "data": { "expire_in": 300, "resend_after": 60 } }
+```
+
+**错误：**
+- 10007(429): 今日验证码发送次数已达上限
+- 90003(500): 短信发送失败（回退内部错误）
+- 90009(400): 参数校验失败
+
+### 2.1.2 POST /auth/otp/verify — 验证验证码并登录/注册
+
+**描述：** 手机号已存在则登录（账号已注销则拒绝），不存在则注册。注册时 `grade` 必填。
+返回 access_token + refresh_token + 用户信息。前端年级数字（3-9）会被映射为 DB 枚举（31-34/71-73）。
+
+| 参数位置 | 字段 | 类型 | 必填 | 校验 | 说明 |
+|---------|------|------|------|------|------|
+| Body | phone | string | Y | 11位手机号 | - |
+| Body | code | string | Y | 6位验证码 | 白名单号码任意码可通过 |
+| Body | scene | string | Y | REGISTER / LOGIN | - |
+| Body | grade | string | 注册必填 | 3-9 或 31-34/71-73 | 新用户注册时映射为 DB enum |
+| Body | nickname | string | N | 2-12字符（Unicode） | 不填自动生成 `用户<手机后4位>` |
+| Body | device_name | string | 登录选填 | - | 设备名 |
+| Body | device_type | string | 登录选填 | IOS / ANDROID | 设备类型 |
+| Body | push_token | string | N | - | 推送 token |
+
+**成功(200)：**（注意：此端点 message 固定 `success`，由 handler 内联返回）
 ```json
 {
-    "code": 0, "message": "注册成功",
-    "data": {
-        "user_id": 10001,
-        "access_token": "eyJhbGciOiJIUzI1NiIs...",
-        "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
-        "expires_in": 2592000,
-        "user": {"id": 10001, "phone": "138****8000", "nickname": "小明", "grade": "34"}
+  "code": 0, "message": "success",
+  "data": {
+    "user_id": 10001,
+    "access_token": "eyJ...",
+    "refresh_token": "eyJ...",
+    "expires_in": 2592000,
+    "user": {
+      "id": 10001,
+      "phone": "138****8000",
+      "nickname": "小明",
+      "grade": "34",
+      "avatar_url": "http://host/v1/files/...",
+      "streak_days": 15,
+      "reminder_enabled": true,
+      "mastered_animation": true,
+      "daily_review_limit": 20
     }
+  }
 }
 ```
 
 **错误：**
-- 10001(409): 手机号已注册
-- 10002(400): 验证码错误/过期
-- 10003(400): 未勾选家长同意
-- 10004(429): 验证码锁定30分钟
+- 10002(400): 验证码错误或已过期
+- 10014(403): 该账号已注销（拒绝登录已注销账号）
+- 10010(400): 昵称长度应为2-12个字符
+- 90009(400): 参数校验失败（grade 非法等）
+- 90003(500): 服务端错误
 
-### 2.1.2 POST /auth/login — 用户登录
-
-**描述：** 手机号+验证码登录（FR-101），含设备管理
-
-| 参数位置 | 字段 | 类型 | 必填 | 校验 | 说明 |
-|---------|------|------|------|------|------|
-| Body | phone | string | Y | `^1[3-9]\d{9}$` | 手机号 |
-| Body | verify_code | string | Y | `^\d{6}$` | 验证码 |
-| Body | device_name | string | Y | 1-64字符 | 设备名 |
-| Body | device_type | string | Y | IOS/ANDROID | 设备类型 |
-| Body | push_token | string | N | max 256 | 推送token |
-
-**成功(200)：**
-```json
-{
-    "code": 0, "message": "登录成功",
-    "data": {
-        "user_id": 10001,
-        "access_token": "eyJ...", "refresh_token": "eyJ...", "expires_in": 2592000,
-        "user": {
-            "id": 10001, "phone": "138****8000", "nickname": "小明", "grade": "34",
-            "avatar_url": "https://...", "streak_days": 15,
-            "reminder_enabled": true, "mastered_animation": true, "daily_review_limit": 20
-        },
-        "kicked_device": null
-    }
-}
-```
-
-> kicked_device非null时有设备被踢出(FR-001-6)，客户端展示提示
-
-**错误：** 10005(404) 用户不存在, 10002(400) 验证码错误
-
-### 2.1.3 POST /auth/send-code — 发送验证码
+### 2.1.3 POST /auth/refresh — 刷新令牌
 
 | 参数位置 | 字段 | 类型 | 必填 | 说明 |
 |---------|------|------|------|------|
-| Body | phone | string | Y | 手机号 |
-| Body | scene | string | Y | REGISTER/LOGIN/RESET_PASSWORD |
+| Body | refresh_token | string | Y | 有效的 refresh_token |
 
-**成功(200)：** `{"code":0,"data":{"expire_in":300,"resend_after":60}}`
+**成功(200)：** 新 access_token + refresh_token + expires_in + user（结构同 2.1.2 data）。
 
-**错误：** 10006(429) 频率限制60秒, 10007(429) 当日10次上限
+> 刷新会作废旧 refresh_token（Redis 单点存储，覆盖更新）。
 
-### 2.1.4 POST /auth/refresh — 刷新Token
+**错误：**
+- 10008(401): 登录已过期，请重新登录（token 非法/已登出/已被覆盖）
+- 10005(404): 用户不存在
+- 90009(400): 参数校验失败
 
-Body: refresh_token (string, 必填)
+### 2.1.4 POST /auth/logout — 退出登录
 
-**成功(200)：** 新access_token + refresh_token + expires_in
+需 Bearer Token。删除 refresh_token、把 access_token 加入黑名单（TTL=剩余有效期）。
 
-**错误：** 10008(401) Token过期需重新登录
+**成功(200)：** `{ "code": 0, "message": "success", "data": null }`
 
-### 2.1.5 POST /auth/logout — 退出登录
-
-需Bearer Token。**成功(200)：** `{"code":0,"message":"退出成功","data":null}`
+**错误：**
+- 90005(401): 未登录
+- 90003(500): 服务端错误
 
 ---
 
-## 2.2 用户信息模块
+## 2.2 用户模块
 
-### 2.2.1 GET /users/profile — 获取个人信息
+### 2.2.1 GET /users/me — 获取当前用户信息
 
-需Bearer Token。
+需 Bearer Token。返回当前用户全量字段（手机号脱敏）。
 
 **成功(200)：**
 ```json
 {
-    "code": 0, "data": {
-        "id": 10001, "phone": "138****8000", "nickname": "小明",
-        "avatar_url": "https://oss.errorhunter.com/avatar/10001.jpg",
-        "grade": "34", "storage_used": 1073741824, "storage_limit": 5368709120,
-        "storage_percent": 20.0, "streak_days": 15,
-        "review_reminder_time": "19:00", "reminder_enabled": true,
-        "mastered_animation": true, "daily_review_limit": 20,
-        "created_at": "2026-06-01T10:00:00+08:00"
-    }
+  "code": 0, "message": "success",
+  "data": {
+    "id": 10001,
+    "phone": "138****8000",
+    "nickname": "小明",
+    "avatar_url": "http://host/v1/files/avatar/10001.jpg",
+    "grade": "34",
+    "storage_used": 1073741824,
+    "storage_limit": 5368709120,
+    "storage_percent": 20.0,
+    "streak_days": 15,
+    "review_reminder_time": "19:00:00",
+    "reminder_enabled": true,
+    "mastered_animation": true,
+    "daily_review_limit": 20,
+    "created_at": "2026-06-01T10:00:00+08:00"
+  }
 }
 ```
 
-### 2.2.2 PATCH /users/profile — 更新个人信息
+**错误：**
+- 90005(401): 未登录
+- 10005(404): 用户不存在
 
-支持部分更新，所有字段选填：
+### 2.2.2 GET /users/me/settings — 获取设置子集
 
-| 字段 | 类型 | 校验 |
-|------|------|------|
-| nickname | string | 2-12字符 |
-| avatar_url | string | URL, max 512 |
-| grade | string | 枚举值 |
-| review_reminder_time | string | HH:mm 18:00-22:00 |
-| reminder_enabled | bool | - |
-| mastered_animation | bool | - |
-| daily_review_limit | int | 10/15/20/25/30 |
+需 Bearer Token。仅返回设置相关字段（供设置页回显）。
 
-**成功(200)：** 更新后完整profile对象
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "reminder_enabled": true,
+    "review_reminder_time": "19:00:00",
+    "mastered_animation": true,
+    "daily_review_limit": 20
+  }
+}
+```
 
-**错误：** 10010(400) 昵称不合规, 10011(400) 年级无效
+**错误：** 90005(401) 未登录，10005(404) 用户不存在。
+
+### 2.2.3 PUT /users/me/settings — 更新设置
+
+需 Bearer Token。部分更新，所有字段选填（指针语义，未传不更新）。
+
+| 参数位置 | 字段 | 类型 | 必填 | 校验 | 说明 |
+|---------|------|------|------|------|------|
+| Body | nickname | string | N | 2-12字符（Unicode） | 昵称 |
+| Body | avatar_url | string | N | URL | 头像地址 |
+| Body | grade | string | N | 31-34/71-73 | 年级（透传 DB enum，不做 3-9 映射） |
+| Body | review_reminder_time | string | N | HH:mm:ss | 复习提醒时间 |
+| Body | reminder_enabled | bool | N | - | 是否开启提醒 |
+| Body | mastered_animation | bool | N | - | 消灭动画开关 |
+| Body | daily_review_limit | int | N | 10-30 | 每日复习上限 |
+
+**成功(200)：** `{ "code": 0, "message": "success", "data": { "message": "设置已更新" } }`
+
+**错误：**
+- 10010(400): 昵称长度应为2-12个字符
+- 10013(400): 每日复习上限应在10-30之间
+- 90005(401) / 10005(404) / 90009(400) / 90003(500)
+
+### 2.2.4 POST /users/me/deactivate — 注销账号
+
+需 Bearer Token。软删除账号（`deleted_at` 置位），此后登录会被 10014 拒绝。
+
+| 参数位置 | 字段 | 类型 | 必填 | 说明 |
+|---------|------|------|------|------|
+| Body | confirm | bool | Y | 必须为 true，二次确认 |
+
+**成功(200)：** `{ "code": 0, "message": "success", "data": { "message": "账号已注销" } }`
+
+**错误：**
+- 90009(400): 请确认注销操作（confirm 缺失或非 true）
+- 90005(401) / 10005(404) / 90003(500)
 
 ---
 
@@ -786,302 +874,601 @@ Body: refresh_token (string, 必填)
 
 ### 2.3.1 POST /questions — 创建错题
 
-**描述：** 录入新错题（FR-200第三步提交）
+需 Bearer Token。录入新错题，自动加入复习计划（status=NOT_STARTED, review_round=1, next_review_date=明天）。
 
-| 参数位置 | 字段 | 类型 | 必填 | 校验 |
-|---------|------|------|------|------|
-| Body | image_url | string | Y | URL, max 512 |
-| Body | ocr_text | string | N | max 10000 |
-| Body | ocr_confirmed | bool | Y | - |
-| Body | my_answer | string | N | max 5000 |
-| Body | correct_answer | string | N | max 5000 |
-| Body | solution_steps | array | N | JSON数组 |
-| Body | error_step_index | int | N | >= 0 |
-| Body | error_category | string | Y | KNOWLEDGE/SKILL/PSYCHOLOGY/HABIT/UNKNOWN |
-| Body | error_sub_category | string | N | max 32 |
-| Body | knowledge_point_ids | int[] | Y | 1-3个元素 |
-| Body | custom_tags | string[] | N | 最多5个,每个max 20字符 |
+| 参数位置 | 字段 | 类型 | 必填 | 校验 | 说明 |
+|---------|------|------|------|------|------|
+| Body | image_url | string | Y | URL | 题目图片地址 |
+| Body | ocr_text | string | N | - | OCR 识别文本 |
+| Body | ocr_confirmed | bool | N | 默认 false | 用户是否已确认 OCR |
+| Body | my_answer | string | N | - | 我的答案 |
+| Body | correct_answer | string | N | - | 正确答案 |
+| Body | solution_steps | string[] | N | JSON 数组 | 解题步骤 |
+| Body | error_step_index | int | N | >= 0 | 错误步骤序号 |
+| Body | error_category | string | Y | KNOWLEDGE/SKILL/PSYCHOLOGY/HABIT/UNKNOWN | 错因粗分类 |
+| Body | sub_categories | string[] | N | - | 细分错因（多选） |
+| Body | knowledge_point_ids | int[] | 条件必填 | 最多 10 个 | 知识点 ID 列表 |
+| Body | knowledge_points | object[] | 条件必填 | `{id,name}` | 知识点对象；name 未命中则按用户学段 find-or-create（自定义知识点） |
+| Body | custom_tags | string[] | N | 最多 5 个 | 自定义标签 |
 
-**成功(201)：**
+> `knowledge_point_ids` 与 `knowledge_points` 至少传其一，否则 20014。
+> 自定义知识点名含 U+FFFD（GBK 残片）会被 90009 拒绝。
+
+**成功(201)：** 返回完整 Question 对象（含 `knowledge_points` 关联、`total_review_rounds=5`）。
+
 ```json
 {
-    "code": 0, "message": "录入成功，已加入复习计划",
-    "data": {
-        "id": 50001, "status": "NOT_STARTED",
-        "image_url": "https://...?sign=xxx&expire=xxx",
-        "ocr_text": "计算：3/4 + 2/3 = ?",
-        "error_category": "SKILL", "error_sub_category": "计算错误",
-        "review_round": 1, "next_review_date": "2026-06-18",
-        "knowledge_points": [{"id": 10, "name": "分数运算", "level": 3}],
-        "custom_tags": ["分数", "易错题"],
-        "created_at": "2026-06-17T15:30:00+08:00"
-    }
+  "code": 0, "message": "created",
+  "data": {
+    "id": 50001, "user_id": 10001, "status": "NOT_STARTED",
+    "image_url": "http://host/v1/files/questions/10001/uuid.png",
+    "ocr_text": "计算：3/4 + 2/3 = ?", "ocr_confirmed": false,
+    "error_category": "SKILL", "sub_categories": ["计算错误"],
+    "master_count": 0, "review_round": 1, "next_review_date": "2026-06-18",
+    "total_review_rounds": 5,
+    "knowledge_points": [{ "id": 10, "name": "分数运算", "level": 3, "stage": "PRIMARY", "version": "2026A" }],
+    "custom_tags": ["分数", "易错题"],
+    "created_at": "2026-06-17T15:30:00+08:00", "updated_at": "..."
+  }
 }
 ```
 
-**错误：** 20001(403) 存储满, 20002(400) 知识点超3个, 20003(400) 知识点年级不匹配, 20007(400) 错因必填
+**错误：**
+- 20008(400): 无效错因分类
+- 20014(400): 部分知识点不存在（或未传任何知识点）
+- 20002(400): 每道错题最多关联10个知识点
+- 20006(400): 自定义标签最多5个
+- 10005(404): 用户不存在
+- 90005(401) / 90009(400) / 90003(500)
 
 ### 2.3.2 GET /questions — 错题列表
 
+需 Bearer Token。仅返回当前用户的错题。
+
 | Query | 类型 | 必填 | 说明 |
 |-------|------|------|------|
-| page | int | N | 默认1 |
-| page_size | int | N | 1-50, 默认20 |
-| status | string | N | 可逗号分隔多选 |
+| page | int | N | 默认 1；<1 钳制为 1 |
+| page_size | int | N | 默认 20；<1→20，>50→50 |
+| q | string | N | 搜索关键词（优先于 keyword）；搜 ocr_text |
+| keyword | string | N | 搜索关键词（q 为空时回退） |
+| status | string | N | 状态筛选，逗号分隔多选（NOT_STARTED/REVIEWING/MASTERED/PERMANENTLY_MASTERED） |
 | error_category | string | N | 错因筛选 |
 | knowledge_point_id | int | N | 知识点筛选 |
-| start_date | string | N | YYYY-MM-DD |
-| end_date | string | N | YYYY-MM-DD |
-| keyword | string | N | 搜ocr_text, max 100 |
-| sort_by | string | N | created_at/updated_at, 默认created_at |
-| sort_order | string | N | asc/desc, 默认desc |
+| start_date | string | N | YYYY-MM-DD，created_at >= 当天 00:00 |
+| end_date | string | N | YYYY-MM-DD，覆盖当天全天（[end, end+1day)） |
+| sort_by | string | N | 默认 created_at |
+| sort_order | string | N | asc / desc，默认 desc |
 
-**成功(200)：** `{list: [...], pagination: {page, page_size, total}}`
+> 关键词参数：后端同时接受 `q` 与 `keyword`，`q` 优先。前端 `searchQuestions` 发 `q`，
+> 列表筛选可能发 `keyword`，两者等价。文档以 `q` 为准。
+
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "list": [ /* Question 对象数组 */ ],
+    "pagination": { "page": 1, "page_size": 20, "total": 156 }
+  }
+}
+```
+
+**错误：** 90005(401) / 90003(500)
 
 ### 2.3.3 GET /questions/:id — 错题详情
 
-Path: id (long)。返回完整错题+review_history+knowledge_points带path。
+需 Bearer Token。Path: id (long)。返回完整 Question（含 `knowledge_points`、`total_review_rounds`）。
 
-**错误：** 20004(404) 不存在, 20010(403) 不属于当前用户
+**错误：**
+- 20004(404): 错题不存在或已被删除
+- 20010(403): 无权操作该错题（不属于当前用户）
+- 90009(400): id 非法
+- 90005(401) / 90003(500)
 
-### 2.3.4 PATCH /questions/:id — 更新错题
+### 2.3.4 PUT /questions/:id — 更新错题
 
-同POST但所有字段选填。knowledge_point_ids和custom_tags为全量替换。
+需 Bearer Token。部分更新，所有字段指针语义（未传不更新；显式传 `[]` 会清空数组字段）。
 
-**成功(200)：** 更新后完整对象
+| 参数位置 | 字段 | 类型 | 说明 |
+|---------|------|------|------|
+| Body | ocr_text | string | - |
+| Body | ocr_confirmed | bool | - |
+| Body | my_answer | string | - |
+| Body | correct_answer | string | - |
+| Body | solution_steps | string[] | nil 不更新；[] 清空 |
+| Body | error_step_index | int | - |
+| Body | error_category | string | KNOWLEDGE/SKILL/PSYCHOLOGY/HABIT/UNKNOWN |
+| Body | sub_categories | string[] | nil 不更新；[] 清空 |
+| Body | knowledge_point_ids | int[] | - |
+| Body | knowledge_points | object[] | `{id,name}`，自定义知识点 find-or-create |
+| Body | custom_tags | string[] | 最多 5 个 |
+
+**成功(200)：** 更新后的完整 Question 对象。
+
+**错误：** 20004(404) / 20010(403) / 20006(400) / 90005(401) / 90009(400) / 90003(500)
 
 ### 2.3.5 DELETE /questions/:id — 软删除
 
+需 Bearer Token。软删除，30 天内可在回收站恢复。
+
 **成功(200)：**
 ```json
-{"code":0,"message":"删除成功，30天内可在回收站恢复",
- "data":{"id":50001,"deleted_at":"...","recover_before":"..."}}
+{ "code": 0, "message": "success", "data": { "message": "删除成功，30天内可在回收站恢复" } }
 ```
+
+**错误：** 20004(404) / 20010(403) / 90005(401) / 90003(500)
 
 ### 2.3.6 GET /questions/recycle-bin — 回收站列表
 
-Query: page, page_size。每项含days_remaining。
+需 Bearer Token。Query: page, page_size（同 2.3.2 钳制规则）。返回软删除的错题。
 
-### 2.3.7 POST /questions/recycle-bin/restore — 恢复错题
+**成功(200)：** `{ "list": [...], "pagination": { page, page_size, total } }`
 
-Body: question_ids (long[], 1-50个)
+**错误：** 90005(401) / 90003(500)
 
-**成功(200)：** `{"data":{"restored_count":2,"failed_ids":[]}}`
+### 2.3.7 POST /questions/:id/restore — 恢复错题
 
-### 2.3.8 DELETE /questions/recycle-bin — 清空回收站
+需 Bearer Token。Path: id (long)。把软删除的错题恢复；未删除的题调用幂等成功。
 
-Body: confirm (bool, 必须true)。二次确认(FR-202-6)。
+**成功(200)：** `{ "code": 0, "message": "success", "data": { "message": "恢复成功" } }`
 
-**成功(200)：** `{"data":{"deleted_count":5}}`
+**错误：** 20004(404) / 20010(403) / 90009(400) / 90005(401) / 90003(500)
 
-**错误：** 20005(400) 未确认
+### 2.3.8 DELETE /questions/:id/permanent — 永久删除
+
+需 Bearer Token。Path: id (long)。先删 DB（含关联知识点），再尽力清理 MinIO 图片（失败仅记日志，不阻断）。
+
+**成功(200)：** `{ "code": 0, "message": "success", "data": { "message": "永久删除成功" } }`
+
+**错误：** 20004(404) / 20010(403) / 90009(400) / 90005(401) / 90003(500)
+
+### 2.3.9 DELETE /questions/recycle-bin/clear — 清空回收站
+
+需 Bearer Token。二次确认；先取回收站图片 URL，DB 删除后再清理 MinIO 图片。
+
+| 参数位置 | 字段 | 类型 | 必填 | 说明 |
+|---------|------|------|------|------|
+| Body | confirm | bool | Y | 必须为 true |
+
+**成功(200)：** `{ "code": 0, "message": "success", "data": { "deleted_count": 5 } }`
+
+**错误：**
+- 20005(400): 请确认清空操作，此操作不可恢复
+- 90005(401) / 90003(500)
 
 ---
 
-## 2.4 复习模块
+## 2.4 知识点模块
 
-### 2.4.1 GET /reviews/today — 今日待复习列表
+### 2.4.1 GET /knowledge-points — 查询知识点
 
-**描述：** 含正常复习+复活检测（FR-400/401/500-4）
+需 Bearer Token。按年级 + 学科查询知识点（版本固定 `2026A`，与 seeder 一致）。
+
+| Query | 类型 | 必填 | 校验 | 说明 |
+|-------|------|------|------|------|
+| grade | string | Y | 31/32/33/34/71/72/73 | 年级（DB enum，不接受 3-9） |
+| subject | string | N | 默认 `数学` | 学科 |
 
 **成功(200)：**
 ```json
 {
-    "code": 0, "data": {
-        "review_items": [
-            {"id": 50001, "type": "NORMAL", "image_url": "...", "ocr_text": "...",
-             "correct_answer": "17/12", "my_answer": "5/7", "solution_steps": [],
-             "error_category": "SKILL", "error_sub_category": "计算错误",
-             "review_round": 2,
-             "knowledge_points": [{"id": 10, "name": "分数运算"}]}
-        ],
-        "revive_items": [
-            {"id": 48000, "type": "REVIVE_CHECK", "label": "复习巩固",
-             "image_url": "...", "ocr_text": "求解一元一次方程：2x+3=7",
-             "correct_answer": "x=2", "mastered_at": "...",
-             "revive_check_interval": 30}
-        ],
-        "total_count": 8, "revive_count": 2,
-        "has_more": false, "overflow_count": 0
-    }
+  "code": 0, "message": "success",
+  "data": {
+    "items": [
+      { "id": 10, "name": "分数运算", "subject": "数学", "parent_id": "num", "is_recommended": true }
+    ]
+  }
 }
 ```
 
-> review_items按优先级排序(FR-400-5)；revive_items最多3道在列表末尾(FR-500-4a)
+> `parent_id` 实为领域标识（num/geo/stat/custom，从 keywords.domain 解析），非外键。
+> 自定义知识点 `is_recommended=false`、`parent_id=custom`。
 
-### 2.4.2 POST /reviews/complete — 提交复习自评
-
-| 参数位置 | 字段 | 类型 | 必填 | 说明 |
-|---------|------|------|------|------|
-| Body | question_id | long | Y | 错题ID |
-| Body | self_rating | string | Y | MASTERED/PARTIAL/FAILED |
-| Body | review_duration_sec | int | N | 用时秒 |
-| Body | is_revive_check | bool | N | 默认false |
-| Body | revive_result | string | 条件 | REMEMBERED/FORGOTTEN(复活检测时必填) |
-
-**正常复习(200)：**
-```json
-{"code":0,"data":{"question_id":50001,"new_status":"REVIEWING",
-  "new_review_round":2,"new_master_count":2,"next_review_date":"2026-06-21",
-  "just_mastered":false,"streak_days":16}}
-```
-
-**消灭触发(200)：** just_mastered=true, total_mastered=51
-
-**复活失败(200)：**
-```json
-{"code":0,"message":"这道题需要再巩固一下哦！",
- "data":{"question_id":48000,"new_status":"REVIEWING","new_review_round":1,
-  "new_master_count":0,"is_revive_failed":true,
-  "encourage_message":"这道题需要再巩固一下哦！加油"}}
-```
-
-**错误：** 30001(400) 不在复习计划, 30002(400) 无效自评, 30005(409) 今日已完成
-
-### 2.4.3 GET /reviews/revive-check — 复活检测预览
-
-**成功(200)：** `{count, items: [{id, ocr_text, mastered_at, revive_check_interval, check_label}]}`
+**错误：**
+- 90009(400): invalid grade（grade 缺失或非法）
+- 90005(401) / 90003(500)
 
 ---
 
-## 2.5 报告模块
+## 2.5 复习模块
 
-### 2.5.1 GET /reports/dashboard — 首页Dashboard
+### 2.5.1 GET /reviews/queue — 今日复习队列
+
+需 Bearer Token。返回正常复习题 + 复活检测题。每日复习上限取自 `users.daily_review_limit`（10-30，取不到回退 20）。
 
 **成功(200)：**
 ```json
 {
-    "code": 0, "data": {
-        "greeting": {"nickname": "小明", "streak_days": 15},
-        "today_task": {"pending_review_count": 8, "has_overflow": false, "overflow_count": 0},
-        "statistics": {"total_questions": 156, "mastered_count": 50, "elimination_rate": 32.05},
-        "error_distribution": [
-            {"category": "SKILL", "label": "技能性错误", "count": 45, "percent": 42.9},
-            {"category": "KNOWLEDGE", "label": "知识性错误", "count": 30, "percent": 28.6},
-            {"category": "PSYCHOLOGY", "label": "心理性错误", "count": 18, "percent": 17.1},
-            {"category": "HABIT", "label": "习惯性错误", "count": 12, "percent": 11.4}
-        ],
-        "weekly_trend": [
-            {"date": "2026-06-11", "new_count": 3, "mastered_count": 2},
-            {"date": "2026-06-17", "new_count": 2, "mastered_count": 1}
-        ],
-        "weak_knowledge_top": [
-            {"knowledge_point_id": 10, "name": "分数运算", "unmastered_count": 8,
-             "path": "数与代数 > 小数与分数 > 分数运算"}
-        ],
-        "calendar": {
-            "year": 2026, "month": 6,
-            "days": {"2026-06-01": {"has_review": true, "has_mastered": false}}
-        }
-    }
+  "code": 0, "message": "success",
+  "data": {
+    "review_items": [ /* Question 对象数组（status=NOT_STARTED/REVIEWING）*/ ],
+    "revive_items": [ /* Question 对象数组（status=MASTERED，最多 3 道）*/ ],
+    "total_count": 8,
+    "revive_count": 2,
+    "has_more": false,
+    "overflow_count": 0
+  }
 }
 ```
 
-> error_distribution不包含UNKNOWN类别(FR-300-9)
+> `review_items` / `revive_items` 均为完整 `model.Question`（与错题列表序列化结构一致，含 `total_review_rounds`）。
+> 客户端靠 `status=MASTERED` 识别复活检测题。超出 daily_limit 的题计入 `overflow_count` 且不入 review_items。
 
-### 2.5.2 GET /reports/weekly — 周报列表
+**错误：** 90005(401) / 90003(500)
 
-Query: page, page_size(1-20)。
+### 2.5.2 POST /reviews/result — 提交复习结果
 
-**成功(200)：** 分页列表含week_number/new/mastered/review_count/accuracy/对比/薄弱知识点
+需 Bearer Token。提交一次自评或复活检测结果。当日重复提交同一题返回 30005。
 
-### 2.5.3 GET /reports/weekly/:id — 周报详情
+| 参数位置 | 字段 | 类型 | 必填 | 校验 | 说明 |
+|---------|------|------|------|------|------|
+| Body | question_id | long | Y | - | 错题 ID |
+| Body | self_rating | string | Y | MASTERED / PARTIAL / FAILED | 自评结果 |
+| Body | review_duration_sec | int | N | >= 0 | 复习用时（秒） |
+| Body | is_revive_check | bool | N | 默认 false | 是否复活检测 |
+| Body | revive_result | string | 条件必填 | REMEMBERED / FORGOTTEN | `is_revive_check=true` 时必填 |
 
-Path: id。额外返回achievements数组和focus_knowledge(含suggestion)。
+**正常复习成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "question_id": 50001,
+    "new_status": "REVIEWING",
+    "new_review_round": 2,
+    "new_master_count": 2,
+    "next_review_date": "2026-06-21",
+    "just_mastered": false,
+    "streak_days": 16
+  }
+}
+```
 
-**错误：** 40001(404) 周报不存在
+> `just_mastered=true` 表示本次复习让 `master_count` 达到 3，状态升为 MASTERED。
+> `next_review_date` 为 `YYYY-MM-DD`；永久消灭时该字段省略。
+> 复活检测成功推进间隔（30→60→90→0永久消灭）；失败则重置为 REVIEWING、review_round=1。
+
+**复活失败成功(200)：** `data` 含 `is_revive_failed:true`、`encourage_message:"这道题需要再巩固一下哦！加油"`。
+
+**错误：**
+- 30002(400): 无效的自评结果
+- 30003(400): 复活检测需提供检测结果
+- 30004(400): 无效复活检测结果
+- 30005(409): 今日已完成该题的复习
+- 30008(400): 复习用时不能为负
+- 30007(400): 该错题不需要复活检测（非 MASTERED 状态题发起复活检测）
+- 20004(404) / 20010(403) / 90005(401) / 90009(400) / 90003(500)
+
+### 2.5.3 GET /reviews — 复习历史
+
+需 Bearer Token。分页返回历史复习记录。
+
+| Query | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| page | int | N | 默认 1；<1→1 |
+| page_size | int | N | 默认 20；<1→20，>100→100 |
+
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "list": [
+      {
+        "id": 9001, "question_id": 50001, "user_id": 10001,
+        "review_round": 2, "self_rating": "MASTERED",
+        "master_count_after": 3, "review_duration_sec": 45,
+        "reviewed_at": "2026-06-17T15:30:00+08:00"
+      }
+    ],
+    "pagination": { "page": 1, "page_size": 20, "total": 42 }
+  }
+}
+```
+
+**错误：** 90005(401) / 90003(500)
 
 ---
 
-## 2.6 同步模块
+## 2.6 报告模块
 
-### 2.6.1 POST /sync/upload — 批量上传离线数据
+### 2.6.1 GET /reports — Dashboard 概览
 
-**描述：** GR-002-3/4单向上传
+需 Bearer Token。首页 Dashboard 数据。
+
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "greeting": { "nickname": "小明", "streak_days": 15 },
+    "today_task": {
+      "pending_review_count": 8,
+      "has_overflow": false,
+      "overflow_count": 0
+    },
+    "statistics": {
+      "total_questions": 156,
+      "mastered_count": 50,
+      "elimination_rate": 32.1
+    },
+    "error_distribution": [
+      { "category": "SKILL", "count": 45 }
+    ],
+    "weekly_trend": [
+      { "date": "2026-06-11", "new_questions": 3, "mastered_count": 2 }
+    ],
+    "weak_knowledge_top": [
+      { "id": 10, "name": "分数运算", "count": 8 }
+    ],
+    "weekly_completed": [true, false, true, true, false, false, false]
+  }
+}
+```
+
+> - `elimination_rate` = round(mastered_count/total_questions*1000)/10，保留 1 位小数。
+> - `today_task.overflow_count` = max(0, pending_review - daily_review_limit)。
+> - `weekly_completed` 为周一至周日的布尔数组（当天有 review_records 才算打卡；今天及未来天为 false）。
+> - `error_distribution` / `weekly_trend` / `weak_knowledge_top` 各项仅含 `category+count` / `date+new_questions+mastered_count` / `id+name+count`，无 label/percent/path 字段。
+
+**错误：** 90005(401) / 10005(404) / 90003(500)
+
+### 2.6.2 GET /reports/weekly — 周报列表
+
+需 Bearer Token。
+
+| Query | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| page | int | N | 默认 1；<1→1 |
+| page_size | int | N | 默认 10；<1→10，>20→20 |
+
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "items": [ /* WeeklyReport 对象数组 */ ],
+    "pagination": { "page": 1, "page_size": 10, "total": 12 }
+  }
+}
+```
+
+> WeeklyReport 字段：`id, user_id, week_number, week_start, week_end, new_questions, mastered_questions, review_count, review_accuracy, prev_week_new, prev_week_mastered, top_error_category, top_error_category_percentage, weak_knowledge_top, created_at`。
+
+**错误：** 90005(401) / 90003(500)
+
+### 2.6.3 GET /reports/weekly/:id — 周报详情
+
+需 Bearer Token。Path: id (long)。返回单个 WeeklyReport 对象（data 为对象，非分页）。
+
+**错误：**
+- 40001(404): 周报不存在
+- 90006(403): 无权访问（周报不属于当前用户）
+- 90009(400): id 非法
+- 90005(401) / 90003(500)
+
+---
+
+## 2.7 上传与存储模块
+
+### 2.7.1 POST /upload — 上传图片
+
+需 Bearer Token。multipart 表单上传到 MinIO，返回通过后端代理可访问的 URL。
+
+| 参数位置 | 字段 | 类型 | 必填 | 校验 | 说明 |
+|---------|------|------|------|------|------|
+| Form | image | file | Y | <= 20MB；jpg/jpeg/png/heic | 图片文件 |
+
+> objectKey 格式：`questions/<userID>/<uuid>.<ext>`。
+> 返回的 `image_url` 形如 `http://<请求Host>/v1/files/questions/<userID>/<uuid>.<ext>`，客户端 `Image.network` 可直接加载。
+
+**成功(200)：**
+```json
+{ "code": 0, "message": "success", "data": { "image_url": "http://host/v1/files/questions/10001/uuid.png" } }
+```
+
+**错误：**
+- 60001(400): 文件大小超过20MB限制
+- 60003(400): 不支持的图片格式，仅支持JPG/PNG/HEIC
+- 60008(503): 图片服务暂时不可用，请稍后重试（MinIO PutObject 失败）
+- 90005(401) / 90009(400)
+
+### 2.7.2 POST /upload/ocr — OCR 识别
+
+需 Bearer Token。从图片 URL 提取 objectKey，优先从 MinIO 直接下载传给 OCR（避免内网 URL 外网不可达）。
 
 | 参数位置 | 字段 | 类型 | 必填 | 说明 |
 |---------|------|------|------|------|
-| Body | items | array | Y | 1-50个 |
-| Body[].local_id | string | Y | UUID |
-| Body[].entity_type | string | Y | QUESTION/REVIEW_RECORD |
-| Body[].operation | string | Y | CREATE/UPDATE/DELETE |
+| Body | image_url | string | Y | 支持 `/v1/files/<key>` 代理 URL 或 `http://endpoint/bucket/<key>` 直连 URL |
+
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "text": "计算：3/4 + 2/3 = ?",
+    "confidence": 0.92,
+    "has_handwriting": true,
+    "has_formula": false,
+    "figures": [],
+    "degraded": false
+  }
+}
+```
+
+> `degraded=true` 时附带 `degrade_reason`。`figures` 为图片区域数组。
+
+**错误：** 60008(503) / 90009(400) / 90005(401) / 90003(500)
+
+### 2.7.3 GET /upload/signed-url — 获取签名 URL
+
+需 Bearer Token。为指定图片生成 MinIO 预签名访问 URL。
+
+| Query | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| file_url | string | Y | 形如 `http://endpoint/bucket/<key>`，取第 5 段为 objectKey |
+| expires | int | N | 60-3600 秒，默认 1800；越界回退 1800 |
+
+**成功(200)：**
+```json
+{ "code": 0, "message": "success", "data": { "signed_url": "https://minio.../...", "expires_in": 1800 } }
+```
+
+**错误：**
+- 60008(503): 图片服务暂时不可用（预签名失败）
+- 90009(400): 参数校验失败（file_url 缺失或格式不符）
+- 90005(401)
+
+### 2.7.4 GET /storage — 存储用量
+
+需 Bearer Token。统计当前用户在 MinIO 的错题图片总量，返回图片对象列表（按 last_modified 倒序，最多 200 张）。
+
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "used_bytes": 1073741824,
+    "image_count": 42,
+    "images": [
+      {
+        "url": "http://host/v1/files/questions/10001/uuid.png",
+        "size": 262144,
+        "last_modified": "2026-06-17T15:30:00Z",
+        "key": "questions/10001/uuid.png"
+      }
+    ],
+    "total": 42,
+    "has_more": false
+  }
+}
+```
+
+> `used_bytes` / `image_count` / `total` 统计全量；`images` 最多 200 项，超出时 `has_more=true`。
+> `total` 与 `image_count` 同值。
+
+**错误：**
+- 60008(503): 图片服务暂时不可用（ListObjects 失败）
+- 90005(401)
+
+### 2.7.5 GET /files/*key — 图片代理访问
+
+**无需认证。** 从 MinIO 流式转发图片。Path: `*key`（含前导 `/`，去掉前导 `/` 后为 objectKey）。
+
+**成功(200)：** 原图字节流，透传 `Content-Type` / `Content-Length`。
+
+**错误：** 400（key 为空）/ 404（对象不存在或下载失败）。无统一 JSON envelope。
+
+> 设计依据：objectKey 含 UUID 不可猜测，故免鉴权以便 `Image.network` 直接加载。
+
+---
+
+## 2.8 同步模块（V1.1 桩实现）
+
+> 当前为桩实现，`Push` 永远返回 SUCCESS，`Pull` 永远返回空变更集。实际同步逻辑 TODO。
+
+### 2.8.1 POST /sync/push — 推送本地变更
+
+需 Bearer Token。
+
+| 参数位置 | 字段 | 类型 | 必填 | 说明 |
+|---------|------|------|------|------|
+| Body | items | array | Y | 1-50 个 |
+| Body[].local_id | string | Y | 本地 ID |
+| Body[].entity_type | string | Y | QUESTION / REVIEW_RECORD |
+| Body[].operation | string | Y | CREATE / UPDATE / DELETE |
 | Body[].payload | object | Y | 完整实体数据 |
 
 **成功(200)：**
 ```json
-{"code":0,"data":{"results":[
-  {"local_id":"uuid-abc","status":"SUCCESS","remote_id":50002},
-  {"local_id":"uuid-def","status":"FAILED","error_code":50005,"error_message":"关联错题不存在"}
-],"success_count":1,"fail_count":1}}
+{
+  "code": 0, "message": "success",
+  "data": {
+    "results": [ { "local_id": "uuid-abc", "status": "SUCCESS", "remote_id": 1 } ],
+    "success_count": 1,
+    "fail_count": 0
+  }
+}
 ```
 
-### 2.6.2 GET /sync/status — 同步状态
+**错误：**
+- 50001(400): 同步数据格式无效
+- 50004(400): 批量同步不能超过50条
+- 90005(401)
 
-**成功(200)：** `{pending_count, failed_count, last_sync_at, failed_items:[...]}`
+### 2.8.2 GET /sync/pull — 拉取远端变更
 
-### 2.6.3 POST /sync/retry — 手动重试
+需 Bearer Token。
 
-Body: sync_ids (long[], 1-10个)
+| Query | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| last_sync_at | string | N | 客户端上次同步时间，原样回显 |
 
-**成功(200)：** `{"data":{"retried_count":1}}`
+**成功(200)：**
+```json
+{
+  "code": 0, "message": "success",
+  "data": {
+    "changes": [],
+    "has_more": false,
+    "server_time": "2026-06-19T00:00:00Z",
+    "last_sync": "<last_sync_at 原值>"
+  }
+}
+```
 
----
-
-## 2.7 图片模块
-
-### 2.7.1 POST /images/upload-url — 获取OSS上传签名URL
-
-| 参数位置 | 字段 | 类型 | 必填 | 校验 |
-|---------|------|------|------|------|
-| Body | file_name | string | Y | max 256 |
-| Body | content_type | string | Y | image/jpeg,png,heic |
-| Body | file_size | long | Y | <= 20971520 (20MB) |
-| Body | category | string | Y | QUESTION/AVATAR |
-
-**成功(200)：** `{upload_url, file_url, expires_in: 300}`
-
-**错误：** 60001(400) 超大, 60002(403) 空间不足, 60003(400) 格式不支持
-
-### 2.7.2 GET /images/signed-url — 图片签名访问URL
-
-Query: file_url(必填), expires(60-3600, 默认1800)
-
-**成功(200)：** `{signed_url, expires_in: 1800}`
+**错误：** 90005(401)
 
 ---
 
-## 2.8 API汇总矩阵
+## 2.9 健康检查
 
-| 模块 | 方法 | 路径 | 认证 | 阶段 | PRD |
-|------|------|------|------|------|-----|
-| 认证 | POST | /auth/send-code | N | MVP | FR-100/101 |
-| 认证 | POST | /auth/register | N | MVP | FR-100 |
-| 认证 | POST | /auth/login | N | MVP | FR-101 |
-| 认证 | POST | /auth/refresh | N | MVP | FR-001-7 |
-| 认证 | POST | /auth/logout | Y | MVP | FR-800 |
-| 用户 | GET | /users/profile | Y | MVP | FR-800-1 |
-| 用户 | PATCH | /users/profile | Y | MVP | FR-800-1 |
-| 错题 | POST | /questions | Y | MVP | FR-200 |
-| 错题 | GET | /questions | Y | MVP | 错题本 |
-| 错题 | GET | /questions/:id | Y | MVP | FR-201 |
-| 错题 | PATCH | /questions/:id | Y | MVP | FR-201 |
-| 错题 | DELETE | /questions/:id | Y | MVP | FR-202 |
-| 错题 | GET | /questions/recycle-bin | Y | MVP | FR-202-4 |
-| 错题 | POST | /questions/recycle-bin/restore | Y | MVP | FR-202-5 |
-| 错题 | DELETE | /questions/recycle-bin | Y | MVP | FR-202-5/6 |
-| 复习 | GET | /reviews/today | Y | MVP | FR-400/401 |
-| 复习 | POST | /reviews/complete | Y | MVP | FR-401 |
-| 复习 | GET | /reviews/revive-check | Y | MVP | FR-500-4 |
-| 报告 | GET | /reports/dashboard | Y | MVP | FR-600 |
-| 报告 | GET | /reports/weekly | Y | MVP | FR-602 |
-| 报告 | GET | /reports/weekly/:id | Y | MVP | FR-602-5 |
-| 同步 | POST | /sync/upload | Y | MVP | GR-002 |
-| 同步 | GET | /sync/status | Y | MVP | GR-002-6 |
-| 同步 | POST | /sync/retry | Y | MVP | GR-002-6 |
-| 图片 | POST | /images/upload-url | Y | MVP | FR-200 |
-| 图片 | GET | /images/signed-url | Y | MVP | NFR-001-4 |
+### GET /health
 
-> **共26个API端点，全部MVP范围。** V1.1新增AI分析相关API。
+**无需认证。**
+
+**成功(200)：** `{ "status": "ok" }`（非标准 envelope，仅状态字段）
+
+---
+
+## 2.10 API 汇总矩阵
+
+| 模块 | 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|------|
+| 认证 | POST | /auth/otp/send | N | 发送验证码 |
+| 认证 | POST | /auth/otp/verify | N | 验证码登录/注册 |
+| 认证 | POST | /auth/refresh | N | 刷新令牌 |
+| 认证 | POST | /auth/logout | Y | 退出登录 |
+| 用户 | GET | /users/me | Y | 当前用户信息 |
+| 用户 | GET | /users/me/settings | Y | 设置子集 |
+| 用户 | PUT | /users/me/settings | Y | 更新设置 |
+| 用户 | POST | /users/me/deactivate | Y | 注销账号 |
+| 错题 | POST | /questions | Y | 创建错题 |
+| 错题 | GET | /questions | Y | 错题列表 |
+| 错题 | GET | /questions/:id | Y | 错题详情 |
+| 错题 | PUT | /questions/:id | Y | 更新错题 |
+| 错题 | DELETE | /questions/:id | Y | 软删除 |
+| 错题 | GET | /questions/recycle-bin | Y | 回收站列表 |
+| 错题 | DELETE | /questions/recycle-bin/clear | Y | 清空回收站 |
+| 错题 | POST | /questions/:id/restore | Y | 恢复错题 |
+| 错题 | DELETE | /questions/:id/permanent | Y | 永久删除 |
+| 知识点 | GET | /knowledge-points | Y | 查询知识点 |
+| 复习 | GET | /reviews/queue | Y | 今日复习队列 |
+| 复习 | POST | /reviews/result | Y | 提交复习结果 |
+| 复习 | GET | /reviews | Y | 复习历史 |
+| 报告 | GET | /reports | Y | Dashboard 概览 |
+| 报告 | GET | /reports/weekly | Y | 周报列表 |
+| 报告 | GET | /reports/weekly/:id | Y | 周报详情 |
+| 上传 | POST | /upload | Y | 上传图片 |
+| 上传 | POST | /upload/ocr | Y | OCR 识别 |
+| 上传 | GET | /upload/signed-url | Y | 获取签名 URL |
+| 存储 | GET | /storage | Y | 存储用量 |
+| 文件 | GET | /files/*key | N | 图片代理访问 |
+| 同步 | POST | /sync/push | Y | 推送变更（桩） |
+| 同步 | GET | /sync/pull | Y | 拉取变更（桩） |
+| 系统 | GET | /health | N | 健康检查 |
+
+> **共 32 个端点。** 同步模块为 V1.1 桩实现，行为见 2.8。
 
 ---
 

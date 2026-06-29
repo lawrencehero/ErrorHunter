@@ -37,4 +37,7 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> updateNickname(String nickname) =>
       _dataSource.updateNickname(nickname);
+
+  @override
+  Future<void> logout() => _dataSource.logout();
 }

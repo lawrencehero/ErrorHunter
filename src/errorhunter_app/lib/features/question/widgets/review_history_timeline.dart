@@ -67,9 +67,13 @@ class _TimelineItem extends StatelessWidget {
 
   Color _resultColor(BuildContext context) {
     final isGlass = context.themeExt.isDarkBackground;
+    // 后端 SelfRating 枚举：MASTERED / PARTIAL / FAILED（主路径）。
+    // 兼容旧值 CORRECT/WRONG/PARTIAL 以防本地缓存残留的旧记录。
     switch (record.result) {
+      case 'MASTERED':
       case 'CORRECT':
         return isGlass ? const Color(0xFF81C784) : AppColors.success;
+      case 'FAILED':
       case 'WRONG':
         return isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
       case 'PARTIAL':
@@ -80,11 +84,15 @@ class _TimelineItem extends StatelessWidget {
   }
 
   String get _resultLabel {
+    // 后端 SelfRating 枚举：MASTERED / PARTIAL / FAILED（主路径）。
+    // 兼容旧值 CORRECT/WRONG/PARTIAL 以防本地缓存残留的旧记录。
     switch (record.result) {
+      case 'MASTERED':
       case 'CORRECT':
-        return '✓ 正确';
+        return '✓ 掌握';
+      case 'FAILED':
       case 'WRONG':
-        return '✗ 错误';
+        return '✗ 不会';
       case 'PARTIAL':
         return '△ 部分记得';
       default:

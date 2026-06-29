@@ -4,6 +4,9 @@ library;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import '../../../di/injection.dart';
+import '../../../domain/repositories/question_repository.dart';
+import '../models/question_model.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
@@ -12,41 +15,7 @@ import '../../../theme/typography.dart';
 import '../../../widgets/common/cards/base_card.dart';
 import '../../../widgets/common/dialogs/confirm_dialog.dart';
 import '../../../widgets/common/dialogs/snackbar.dart';
-
-/// 回收站中的错题条目（本地数据模型）
-class _RecycleBinItem {
-  const _RecycleBinItem({
-    required this.id,
-    required this.ocrText,
-    required this.subject,
-    required this.errorCategory,
-    required this.deletedAt,
-  });
-
-  final String id;
-  final String ocrText;
-  final String subject;
-  final String errorCategory;
-  final DateTime deletedAt;
-
-  /// 距离被永久删除还剩多少天
-  int get remainingDays {
-    const retentionPeriod = Duration(days: 30);
-    final expiresAt = deletedAt.add(retentionPeriod);
-    final remaining = expiresAt.difference(DateTime.now()).inDays;
-    return remaining < 0 ? 0 : remaining;
-  }
-
-  /// 格式化删除日期
-  String get formattedDeletedDate {
-    final now = DateTime.now();
-    final diff = now.difference(deletedAt);
-    if (diff.inDays == 0) return '今天删除';
-    if (diff.inDays == 1) return '昨天删除';
-    if (diff.inDays < 7) return '${diff.inDays}天前删除';
-    return '${deletedAt.month}月${deletedAt.day}日删除';
-  }
-}
+import '../../../widgets/common/dialogs/toast.dart';
 
 /// 回收站页面
 class RecycleBinPage extends StatefulWidget {
@@ -57,9 +26,9 @@ class RecycleBinPage extends StatefulWidget {
 }
 
 class _RecycleBinPageState extends State<RecycleBinPage> {
-  // TODO: 替换为真实数据源（DatabaseHelper / Repository）
-  List<_RecycleBinItem> _items = [];
+  List<QuestionModel> _items = const [];
   bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -68,70 +37,44 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-
-    // TODO: QuestionRepository 接口尚未添加 recycle bin 方法，
-    //       待后端就绪后替换为 repository.getRecycleBinItems()
-    await Future.delayed(const Duration(milliseconds: 400));
-
     setState(() {
-      _items = []; // TODO: 替换为真实数据源
-      _isLoading = false;
+      _isLoading = true;
+      _errorMessage = null;
     });
+    try {
+      final items = await sl<QuestionRepository>().getRecycleBin();
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = '加载失败，请下拉重试';
+        _isLoading = false;
+      });
+    }
   }
 
-  /// Mock 数据生成器（开发阶段使用）
-  static List<_RecycleBinItem> _generateMockItems() {
-    return [
-      _RecycleBinItem(
-        id: 'rb_1',
-        ocrText: '计算 24 × 15 的结果',
-        subject: '数学',
-        errorCategory: 'SKILL',
-        deletedAt: DateTime.now().subtract(const Duration(days: 1)),
-      ),
-      _RecycleBinItem(
-        id: 'rb_2',
-        ocrText: '解方程 3x + 7 = 22',
-        subject: '数学',
-        errorCategory: 'KNOWLEDGE',
-        deletedAt: DateTime.now().subtract(const Duration(days: 3)),
-      ),
-      _RecycleBinItem(
-        id: 'rb_3',
-        ocrText: 'The boy ___ (go) to school every day.',
-        subject: '英语',
-        errorCategory: 'HABIT',
-        deletedAt: DateTime.now().subtract(const Duration(days: 7)),
-      ),
-      _RecycleBinItem(
-        id: 'rb_4',
-        ocrText: '写出"春风又绿江南岸"的下一句',
-        subject: '语文',
-        errorCategory: 'PSYCHOLOGY',
-        deletedAt: DateTime.now().subtract(const Duration(days: 15)),
-      ),
-      _RecycleBinItem(
-        id: 'rb_5',
-        ocrText: '一个圆的半径为3cm，求面积（π取3.14）',
-        subject: '数学',
-        errorCategory: 'SKILL',
-        deletedAt: DateTime.now().subtract(const Duration(days: 25)),
-      ),
-    ];
-  }
+  /// 恢复错题（乐观更新 + 失败回滚）
+  Future<void> _restoreItem(QuestionModel item) async {
+    final previous = List<QuestionModel>.from(_items);
+    setState(() => _items = _items.where((q) => q.id != item.id).toList());
 
-  /// 恢复错题
-  Future<void> _restoreItem(_RecycleBinItem item) async {
-    // TODO: 调用 DatabaseHelper.restoreQuestion(item.id)
-    setState(() => _items.remove(item));
-
-    if (!mounted) return;
-    EHSnackbar.show(context, message: '已恢复到错题本', icon: Icons.restore);
+    try {
+      await sl<QuestionRepository>().restoreQuestion(item.id);
+      if (!mounted) return;
+      EHSnackbar.show(context, message: '已恢复到错题本', icon: Icons.restore);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _items = previous);
+      EHToast.show(context, message: '恢复失败，请重试', type: EHToastType.error);
+    }
   }
 
   /// 永久删除单条
-  Future<void> _permanentDelete(_RecycleBinItem item) async {
+  Future<void> _permanentDelete(QuestionModel item) async {
     final confirmed = await EHConfirmDialog.show(
       context,
       title: '永久删除',
@@ -143,11 +86,18 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
     if (confirmed != true || !mounted) return;
 
-    // TODO: 调用 DatabaseHelper.permanentlyDeleteQuestion(item.id)
-    setState(() => _items.remove(item));
+    final previous = List<QuestionModel>.from(_items);
+    setState(() => _items = _items.where((q) => q.id != item.id).toList());
 
-    if (!mounted) return;
-    EHSnackbar.show(context, message: '已永久删除', icon: Icons.delete_outline);
+    try {
+      await sl<QuestionRepository>().permanentDeleteQuestion(item.id);
+      if (!mounted) return;
+      EHSnackbar.show(context, message: '已永久删除', icon: Icons.delete_outline);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _items = previous);
+      EHToast.show(context, message: '删除失败，请重试', type: EHToastType.error);
+    }
   }
 
   /// 清空回收站
@@ -165,11 +115,22 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
     if (confirmed != true || !mounted) return;
 
-    // TODO: 调用 DatabaseHelper.clearRecycleBin()
-    setState(() => _items.clear());
+    final previous = List<QuestionModel>.from(_items);
+    setState(() => _items = const []);
 
-    if (!mounted) return;
-    EHSnackbar.show(context, message: '回收站已清空', icon: Icons.delete_sweep);
+    try {
+      final count = await sl<QuestionRepository>().clearRecycleBin();
+      if (!mounted) return;
+      EHSnackbar.show(
+        context,
+        message: count > 0 ? '已清空 $count 道错题' : '回收站已清空',
+        icon: Icons.delete_sweep,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _items = previous);
+      EHToast.show(context, message: '清空失败，请重试', type: EHToastType.error);
+    }
   }
 
   @override
@@ -218,6 +179,29 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
       return Center(child: CircularProgressIndicator(color: accentColor));
     }
 
+    // 错误态：提供重试
+    if (_errorMessage != null && _items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: AppColors.danger),
+            SizedBox(height: AppSpacing.sm),
+            Text(_errorMessage!,
+                style: AppTypography.primary.body
+                    .copyWith(color: context.textColors.primary)),
+            SizedBox(height: AppSpacing.md),
+            GestureDetector(
+              onTap: _loadData,
+              child: Text('点击重试',
+                  style: AppTypography.primary.button
+                      .copyWith(color: accentColor)),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_items.isEmpty) {
       return _buildEmptyState();
     }
@@ -228,14 +212,20 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
         _buildRetentionBanner(),
         // 列表
         Expanded(
-          child: ListView.separated(
-            padding: EdgeInsets.symmetric(
-              horizontal: AppSpacing.pagePaddingHorizontal,
-              vertical: AppSpacing.sm,
+          child: RefreshIndicator(
+            color: accentColor,
+            onRefresh: _loadData,
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.pagePaddingHorizontal,
+                vertical: AppSpacing.sm,
+              ),
+              itemCount: _items.length,
+              separatorBuilder: (_, __) => SizedBox(height: AppSpacing.sm),
+              itemBuilder: (context, index) =>
+                  _buildDismissibleItem(_items[index]),
             ),
-            itemCount: _items.length,
-            separatorBuilder: (_, __) => SizedBox(height: AppSpacing.sm),
-            itemBuilder: (context, index) => _buildDismissibleItem(_items[index]),
           ),
         ),
       ],
@@ -337,14 +327,14 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
   }
 
   /// 可滑动删除/恢复的列表项
-  Widget _buildDismissibleItem(_RecycleBinItem item) {
+  Widget _buildDismissibleItem(QuestionModel item) {
     final isGlass = context.themeExt.isDarkBackground;
     final successColor =
         isGlass ? const Color(0xFF81C784) : AppColors.success;
     final dangerColor =
         isGlass ? const Color(0xFFFF8A80) : AppColors.danger;
     return Dismissible(
-      key: Key(item.id),
+      key: ValueKey(item.id),
       direction: DismissDirection.horizontal,
       dragStartBehavior: DragStartBehavior.down,
       background: _buildSwipeBackground(
@@ -409,9 +399,11 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
   }
 
   /// 列表项卡片
-  Widget _buildItemCard(_RecycleBinItem item) {
+  Widget _buildItemCard(QuestionModel item) {
     final tc = context.textColors;
     final isGlass = context.themeExt.isDarkBackground;
+    // deletedAt 缺失时回退 updatedAt，再回退 createdAt，保证展示有值
+    final deletedAt = item.deletedAt ?? item.updatedAt ?? item.createdAt;
     return EHBaseCard(
       padding: AppSpacing.cardPadding,
       child: Row(
@@ -421,7 +413,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.errorCategoryColor(item.errorCategory)
+              color: AppColors.errorCategoryColor(item.errorCategory.code)
                   .withOpacity(isGlass ? 0.22 : 0.12),
               borderRadius: AppRadius.radiusMd,
             ),
@@ -439,7 +431,9 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.ocrText,
+                  item.ocrText?.isNotEmpty == true
+                      ? item.ocrText!
+                      : '无文字内容',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.primary.body.copyWith(
@@ -451,9 +445,9 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
                   children: [
                     _buildTag(item.subject),
                     SizedBox(width: AppSpacing.xs),
-                    _buildTag(item.formattedDeletedDate),
+                    _buildTag(_formatDeletedDate(deletedAt)),
                     SizedBox(width: AppSpacing.xs),
-                    _buildRemainingDaysTag(item.remainingDays),
+                    _buildRemainingDaysTag(_remainingDays(deletedAt)),
                   ],
                 ),
               ],
@@ -462,6 +456,24 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
         ],
       ),
     );
+  }
+
+  /// 距离被永久删除还剩多少天（按 30 天保留期）
+  int _remainingDays(DateTime deletedAt) {
+    const retentionPeriod = Duration(days: 30);
+    final expiresAt = deletedAt.add(retentionPeriod);
+    final remaining = expiresAt.difference(DateTime.now()).inDays;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  /// 格式化删除日期
+  String _formatDeletedDate(DateTime deletedAt) {
+    final now = DateTime.now();
+    final diff = now.difference(deletedAt);
+    if (diff.inDays == 0) return '今天删除';
+    if (diff.inDays == 1) return '昨天删除';
+    if (diff.inDays < 7) return '${diff.inDays}天前删除';
+    return '${deletedAt.month}月${deletedAt.day}日删除';
   }
 
   /// 小标签

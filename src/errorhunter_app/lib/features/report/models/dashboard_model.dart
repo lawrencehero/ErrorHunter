@@ -26,11 +26,16 @@ class DashboardData extends Equatable {
   final List<bool> weeklyCompleted; // 本周一到周日是否打卡
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
-    final greeting = json['greeting'] as Map<String, dynamic>? ?? {};
-    final todayTask = json['today_task'] as Map<String, dynamic>? ?? {};
-    final statistics = json['statistics'] as Map<String, dynamic>? ?? {};
-    final weakKp = json['weak_knowledge_top'] as List<dynamic>? ?? [];
-    final weeklyRaw = json['weekly_completed'] as List<dynamic>? ?? [];
+    // 用 Map?.cast 而非 as Map<String,dynamic>?：兼容 Dio 解码(Map<String,dynamic>)
+    // 与手写/动态 map(Map<dynamic,dynamic>)，避免强转崩。
+    final greeting =
+        (json['greeting'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+    final todayTask =
+        (json['today_task'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+    final statistics =
+        (json['statistics'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+    final weakKp = json['weak_knowledge_top'] as List? ?? [];
+    final weeklyRaw = json['weekly_completed'] as List? ?? [];
 
     return DashboardData(
       nickname: greeting['nickname'] as String? ?? '同学',
@@ -40,7 +45,7 @@ class DashboardData extends Equatable {
       masteredCount: statistics['mastered_count'] as int? ?? 0,
       eliminationRate: (statistics['elimination_rate'] as num?)?.toDouble() ?? 0.0,
       weakKnowledge: weakKp.map((item) {
-        final map = item as Map<String, dynamic>;
+        final map = (item as Map).cast<String, dynamic>();
         final rawId = map['id'];
         return WeakKnowledgeItem(
           id: rawId is int ? rawId.toString() : rawId as String?,
@@ -66,6 +71,9 @@ class DashboardData extends Equatable {
   List<Object?> get props => [
     nickname, streakDays, pendingReviewCount,
     totalQuestions, masteredCount, eliminationRate,
+    // 此前漏掉 weakKnowledge / weeklyCompleted，导致这两者变化时
+    // Equatable 误判相等、BlocBuilder 不重建（首页薄弱知识点/周打卡不刷新）。
+    weakKnowledge, weeklyCompleted,
   ];
 }
 

@@ -90,7 +90,7 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
         onPressed: () => context.pop(),
       ),
       title: Text(
-        report != null ? '第${report.summary.weekNumber}周周报' : '周报详情',
+        report != null ? report.summary.title : '周报详情',
         style: AppTypography.primary.h3.copyWith(
           color: tc.primary,
         ),
@@ -240,29 +240,42 @@ class _WeeklyReportDetailPageState extends State<WeeklyReportDetailPage> {
                     ],
                   ),
                   SizedBox(height: AppSpacing.sm),
-                  Row(
-                    children: [
-                      EHErrorCategoryChip(
-                        category: report.mostFrequentErrorCategory,
+                  if (report.mostFrequentErrorCategory == null)
+                    // 本周无新增错题：后端 top_error_category 为 nil（omitempty 不返回）。
+                    // 不再回退到「不确定」chip，避免误导用户认为本周错因集中在「不确定」。
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                      child: Text(
+                        '本周暂无新增错题，无法统计错因分布',
+                        style: AppTypography.primary.caption.copyWith(
+                          color: tc.tertiary,
+                        ),
                       ),
-                      SizedBox(width: AppSpacing.md),
-                      Text(
-                        '${report.mostFrequentErrorPercentage.toStringAsFixed(1)}%',
-                        style: AppTypography.primary.h2.copyWith(
-                          color: AppColors.errorCategoryColor(
-                            report.mostFrequentErrorCategory,
+                    )
+                  else
+                    Row(
+                      children: [
+                        EHErrorCategoryChip(
+                          category: report.mostFrequentErrorCategory!,
+                        ),
+                        SizedBox(width: AppSpacing.md),
+                        Text(
+                          '${report.mostFrequentErrorPercentage.toStringAsFixed(1)}%',
+                          style: AppTypography.primary.h2.copyWith(
+                            color: AppColors.errorCategoryColor(
+                              report.mostFrequentErrorCategory!,
+                            ),
                           ),
                         ),
-                      ),
-                      SizedBox(width: AppSpacing.xs),
-                      Text(
-                        '的错题属于此类型',
-                        style: AppTypography.primary.caption.copyWith(
-                          color: tc.secondary,
+                        SizedBox(width: AppSpacing.xs),
+                        Text(
+                          '的错题属于此类型',
+                          style: AppTypography.primary.caption.copyWith(
+                            color: tc.secondary,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
             ),

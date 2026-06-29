@@ -14,6 +14,7 @@ import '../data/remote/question_remote_data_source.dart';
 import '../data/remote/report_remote_data_source.dart';
 import '../data/remote/review_remote_data_source.dart';
 import '../data/remote/storage_remote_data_source.dart';
+import '../data/remote/user_remote_data_source.dart';
 import '../data/repositories/auth_repository_impl.dart';
 import '../data/repositories/auth_repository_mock.dart';
 import '../data/repositories/knowledge_point_repository_impl.dart';
@@ -69,6 +70,9 @@ Future<void> configureDependencies() async {
   );
   sl.registerLazySingleton<KnowledgePointRemoteDataSource>(
     () => KnowledgePointRemoteDataSource(client: sl<ApiClient>()),
+  );
+  sl.registerLazySingleton<UserRemoteDataSource>(
+    () => UserRemoteDataSource(client: sl<ApiClient>()),
   );
 
   // ─── Repositories ──────────────────────────────────────

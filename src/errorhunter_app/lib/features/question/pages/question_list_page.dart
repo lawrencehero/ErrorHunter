@@ -497,7 +497,9 @@ class _QuestionTabBodyState extends State<_QuestionTabBody>
             createdAt: question.createdAt,
             reviewCount: question.currentReviewRound,
           ),
-          onTap: () => context.go('${Routes.questions}/${question.id}'),
+          // 用 push 而非 go：详情页 AppBar 返回/系统返回手势能回到列表，
+          // 且 ShellRoute 的 PopScope 不会把返回重定向到首页。
+          onTap: () => context.push('${Routes.questions}/${question.id}'),
         ),
         // Micro progress bar
         if (question.currentReviewRound > 0)

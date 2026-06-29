@@ -29,11 +29,14 @@ class MockReviewRepository implements ReviewRepository {
     required String selfRating,
     int? reviewDurationSec,
     bool isReviveCheck = false,
+    String? reviveResult,
   }) async {
     submitted.add({
       'question_id': questionId,
       'self_rating': selfRating,
       'is_revive_check': isReviveCheck,
+      if (reviewDurationSec != null) 'review_duration_sec': reviewDurationSec,
+      if (reviveResult != null) 'revive_result': reviveResult,
     });
   }
 }
@@ -42,6 +45,8 @@ QuestionModel createReviewQuestion({
   String id = "rq001",
   QuestionStatus status = QuestionStatus.notStarted,
   int round = 1,
+  int masterCount = 0,
+  DateTime? masteredAt,
 }) {
   return QuestionModel(
     id: id,
@@ -54,6 +59,8 @@ QuestionModel createReviewQuestion({
     ],
     currentReviewRound: round,
     totalReviewRounds: 5,
+    masterCount: masterCount,
+    masteredAt: masteredAt,
     createdAt: DateTime(2026, 6, 1),
   );
 }
@@ -331,6 +338,346 @@ void main() {
       const c = SelfEvaluate(SelfEvalRating.forgot);
       expect(a, equals(b));
       expect(a, isNot(equals(c)));
+    });
+  });
+
+  // ─── P0 修复守护：复活检测提交 revive_result ──────────────
+  // 后端 handleReviveCheck 强制要求 revive_result（REMEMBERED/FORGOTTEN），
+  // 缺失返回 400。前端必须把"还记得/忘记"映射为 revive_result 一并提交。
+  group("Revive check submit (P0 守护)", () {
+    test("复活题评 remembered → 提交带 revive_result=REMEMBERED", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(
+          id: "rev1",
+          status: QuestionStatus.mastered,
+          round: 5,
+          masterCount: 3,
+          masteredAt: DateTime(2026, 6, 14),
+        ),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.remembered));
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // 复活题不触发消灭动画，走 EvaluationPending
+      expect(bloc.state, isA<EvaluationPending>());
+
+      // 确认提交
+      bloc.add(const ConfirmAndNext());
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      expect(mockRepo.submitted, isNotEmpty);
+      final last = mockRepo.submitted.last;
+      expect(last['question_id'], "rev1");
+      expect(last['is_revive_check'], isTrue);
+      expect(last['revive_result'], "REMEMBERED");
+      // self_rating 仍按映射传 MASTERED（后端复活分支不读，但 binding required）
+      expect(last['self_rating'], "MASTERED");
+    });
+
+    test("复活题评 forgotten → 提交带 revive_result=FORGOTTEN", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(
+          id: "rev2",
+          status: QuestionStatus.mastered,
+          round: 5,
+          masterCount: 3,
+        ),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.forgotten));
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const ConfirmAndNext());
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      final last = mockRepo.submitted.last;
+      expect(last['revive_result'], "FORGOTTEN");
+      expect(last['self_rating'], "FAILED");
+    });
+
+    test("普通题提交不带 revive_result", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(id: "norm1", round: 1, masterCount: 0),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.partial));
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const ConfirmAndNext());
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      final last = mockRepo.submitted.last;
+      expect(last['is_revive_check'], isFalse);
+      expect(last.containsKey('revive_result'), isFalse);
+    });
+  });
+
+  // ─── P0 修复守护：消灭判定用 master_count ──────────────────
+  // 后端 master_count >= 3 即消灭。原前端用 currentReviewRound 近似，会误判
+  // round=3 但 master_count=0（连续失败重置过）的题为可消灭。
+  group("Eliminate by masterCount (P0 守护)", () {
+    test("masterCount>=3 + mastered → 触发消灭动画", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(
+          id: "elim_mc",
+          round: 1,
+          masterCount: 3,
+        ),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.mastered));
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state, isA<EliminateTriggered>());
+    });
+
+    test("masterCount=2 + mastered → 不触发消灭（仍 EvaluationPending）",
+        () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(
+          id: "noelim_mc",
+          round: 4,
+          masterCount: 2,
+        ),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.mastered));
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state, isA<EvaluationPending>());
+      expect(bloc.state, isNot(isA<EliminateTriggered>()));
+    });
+
+    test("复活检测题（mastered）即使 masterCount>=3 也不触发消灭动画",
+        () async {
+      // 复活题已消灭过，走 revive_result 路径，不应再弹消灭动画。
+      mockRepo.mockQueue = [
+        createReviewQuestion(
+          id: "revive_noelim",
+          status: QuestionStatus.mastered,
+          round: 5,
+          masterCount: 3,
+        ),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.remembered));
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state, isA<EvaluationPending>());
+      expect(bloc.state, isNot(isA<EliminateTriggered>()));
+    });
+  });
+
+  // ─── P1 修复守护：复活检测真实天数 ─────────────────────────
+  group("daysSinceMastered (P1 守护)", () {
+    test("masteredAt 存在 → 计算真实天数", () async {
+      // 10 天前消灭
+      final tenDaysAgo = DateTime.now().subtract(const Duration(days: 10));
+      mockRepo.mockQueue = [
+        createReviewQuestion(
+          id: "rev_days",
+          status: QuestionStatus.mastered,
+          round: 5,
+          masterCount: 3,
+          masteredAt: tenDaysAgo,
+        ),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      final state = bloc.state as ReviewInProgress;
+      // 容忍 ±1 天边界（inDays 舍入）
+      expect(state.daysSinceLastMastered, greaterThanOrEqualTo(9));
+      expect(state.daysSinceLastMastered, lessThanOrEqualTo(11));
+    });
+
+    test("masteredAt 缺失 → 回退 14（兼容旧缓存/mock）", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(
+          id: "rev_fallback",
+          status: QuestionStatus.mastered,
+          round: 5,
+          masterCount: 3,
+          // masteredAt 不传
+        ),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      final state = bloc.state as ReviewInProgress;
+      expect(state.daysSinceLastMastered, 14);
+    });
+  });
+
+  // ─── P1 修复守护：提交携带 review_duration_sec ─────────────
+  group("review_duration_sec (P1 守护)", () {
+    test("确认提交时携带 review_duration_sec", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(id: "dur1", round: 1, masterCount: 0),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.partial));
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const ConfirmAndNext());
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      final last = mockRepo.submitted.last;
+      expect(last.containsKey('review_duration_sec'), isTrue);
+      // 至少 >= 0
+      expect(last['review_duration_sec'] as int, greaterThanOrEqualTo(0));
+    });
+
+    test("消灭路径提交也携带 review_duration_sec", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(id: "dur2", round: 1, masterCount: 3),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.mastered));
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state, isA<EliminateTriggered>());
+      expect(mockRepo.submitted, isNotEmpty);
+      expect(
+        mockRepo.submitted.last.containsKey('review_duration_sec'),
+        isTrue,
+      );
+    });
+  });
+
+  // ─── P1 修复守护：中途退出提交撤销窗口内评价 ───────────────
+  group("ExitReview (P1 守护)", () {
+    test("EvaluationPending 状态退出 → 提交当前评价", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(id: "exit1", round: 1, masterCount: 0),
+        createReviewQuestion(id: "exit2", round: 1, masterCount: 0),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.partial));
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state, isA<EvaluationPending>());
+
+      // 模拟用户确认退出
+      bloc.add(const ExitReview());
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // 撤销窗口内的评价应被提交
+      final submitted = mockRepo.submitted
+          .where((s) => s['question_id'] == "exit1")
+          .toList();
+      expect(submitted, isNotEmpty);
+      expect(submitted.last['self_rating'], "PARTIAL");
+    });
+
+    test("ReviewInProgress 状态退出（未评价）→ 不提交", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(id: "exit3", round: 1, masterCount: 0),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      // 未评价直接退出
+      bloc.add(const ExitReview());
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(mockRepo.submitted, isEmpty);
+    });
+  });
+
+  // ─── P1 修复守护：GoToPrevious 提交撤销窗口内评价 ─────────
+  group("GoToPrevious flushes pending (P1 守护)", () {
+    test("EvaluationPending 状态回看 → 先提交当前评价", () async {
+      mockRepo.mockQueue = [
+        createReviewQuestion(id: "prev1", round: 1, masterCount: 0),
+        createReviewQuestion(id: "prev2", round: 1, masterCount: 0),
+      ];
+      bloc.add(const StartReview());
+      await Future.delayed(const Duration(milliseconds: 100));
+      // 先评价第 1 题并确认，进入第 2 题
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.partial));
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const ConfirmAndNext());
+      await Future.delayed(const Duration(milliseconds: 50));
+      // 现在在第 2 题（prev2）
+      expect(bloc.state, isA<ReviewInProgress>());
+      expect((bloc.state as ReviewInProgress).currentIndex, 1);
+
+      // 第 2 题评价，进入撤销窗口
+      bloc.add(const ShowAnswer());
+      await Future.delayed(const Duration(milliseconds: 50));
+      bloc.add(const SelfEvaluate(SelfEvalRating.mastered));
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state, isA<EvaluationPending>());
+
+      // 撤销窗口内立即回看
+      bloc.add(const GoToPrevious());
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // prev2 的评价应被提交（不被撤销窗口吞掉）
+      final submitted = mockRepo.submitted
+          .where((s) => s['question_id'] == "prev2")
+          .toList();
+      expect(submitted, isNotEmpty);
+      expect(submitted.last['self_rating'], "MASTERED");
+    });
+  });
+
+  // ─── QuestionModel 字段解析守护（跨区必要改动）──────────────
+  group("QuestionModel masterCount/masteredAt parsing", () {
+    test("fromJson 解析 master_count 和 mastered_at", () {
+      final json = {
+        'id': 42,
+        'image_url': 'https://example.com/x.jpg',
+        'status': 'MASTERED',
+        'error_category': 'KNOWLEDGE',
+        'review_round': 5,
+        'total_review_rounds': 5,
+        'master_count': 3,
+        'mastered_at': '2026-06-14T10:00:00.000Z',
+        'created_at': '2026-06-01T00:00:00.000Z',
+      };
+      final q = QuestionModel.fromJson(json);
+      expect(q.masterCount, 3);
+      expect(q.masteredAt, isNotNull);
+    });
+
+    test("fromJson 缺失 master_count → 默认 0", () {
+      final json = {
+        'id': 1,
+        'image_url': 'x.jpg',
+        'status': 'REVIEWING',
+        'error_category': 'KNOWLEDGE',
+        'review_round': 1,
+        'created_at': '2026-06-01T00:00:00.000Z',
+      };
+      final q = QuestionModel.fromJson(json);
+      expect(q.masterCount, 0);
+      expect(q.masteredAt, isNull);
+    });
+
+    test("toJson 回写 master_count", () {
+      final q = createReviewQuestion(id: "t1", masterCount: 2);
+      final json = q.toJson();
+      expect(json['master_count'], 2);
     });
   });
 }

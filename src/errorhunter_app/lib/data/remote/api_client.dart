@@ -34,6 +34,22 @@ class ApiClient {
   final Dio _dio;
   final SharedPreferences _prefs;
 
+  /// 仅供测试注入 HttpClientAdapter / 验证拦截器行为使用。
+  /// 生产代码不应访问此 getter（封装边界由 _dio 私有化保证）。
+  @visibleForTesting
+  Dio get dio => _dio;
+
+  /// 会话失效回调 — refresh token 刷新失败时由 _RefreshTokenInterceptor 触发。
+  ///
+  /// data 层不能直接依赖 AuthBloc，故用回调解耦。app 启动时（main.dart /
+  /// MyApp）由上层接线：`sl<ApiClient>().onSessionExpired = () =>
+  /// sl<AuthBloc>().add(const AuthSessionExpired());`。
+  ///
+  /// 回调本身不做防抖：AuthBloc 收到第一个 AuthSessionExpired 即 emit
+  /// Unauthenticated，后续并发的同名事件在已是 Unauthenticated 时不再重复
+  /// emit（幂等），避免刷新失败时多个并发 401 重复跳登录。
+  void Function()? onSessionExpired;
+
   // ─── Token Keys ──────────────────────────────────────────
   static const String _accessTokenKey = 'auth_access_token';
   static const String _refreshTokenKey = 'auth_refresh_token';
@@ -42,7 +58,7 @@ class ApiClient {
   void _setupInterceptors() {
     _dio.interceptors.addAll([
       _AuthInterceptor(_prefs),
-      _RefreshTokenInterceptor(_prefs, _dio),
+      _RefreshTokenInterceptor(this),
       _RetryInterceptor(),
       if (kDebugMode) _LoggingInterceptor(),
     ]);
@@ -186,12 +202,20 @@ class _AuthInterceptor extends Interceptor {
 
 /// RefreshToken 拦截器 — 401 时自动刷新 Token 并重放请求
 class _RefreshTokenInterceptor extends Interceptor {
-  _RefreshTokenInterceptor(this._prefs, this._dio);
+  _RefreshTokenInterceptor(this._apiClient)
+      : _prefs = _apiClient._prefs,
+        _dio = _apiClient._dio;
 
+  final ApiClient _apiClient;
   final SharedPreferences _prefs;
   final Dio _dio;
   bool _isRefreshing = false;
   final List<_PendingRequest> _pendingRequests = [];
+
+  /// 同一会话内只通知一次（多个并发 401 不会重复触发回调）。
+  /// AuthBloc 侧也对 AuthSessionExpired 做了幂等处理，这里是双保险，
+  /// 避免回调本身有副作用时被多次调用。
+  bool _sessionExpiredNotified = false;
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
@@ -230,10 +254,10 @@ class _RefreshTokenInterceptor extends Interceptor {
         throw Exception('No refresh token available');
       }
 
-      // 使用新的 Dio 实例避免循环拦截
-      final refreshDio = Dio(_dio.options);
-      final response = await refreshDio.post<Map<String, dynamic>>(
-        '${_dio.options.baseUrl}${ApiEndpoints.refreshToken}',
+      // 通过同一 Dio 实例发起刷新请求：共享 HttpClientAdapter 与 baseUrl，
+      // 便于测试注入假适配器。循环拦截已由上面 `path == refresh` 短路规避。
+      final response = await _dio.post<Map<String, dynamic>>(
+        ApiEndpoints.refreshToken,
         data: {'refresh_token': refreshToken},
       );
 
@@ -279,6 +303,20 @@ class _RefreshTokenInterceptor extends Interceptor {
       // 刷新失败 → 清除 Token，通知上层重新登录
       await _prefs.remove('auth_access_token');
       await _prefs.remove('auth_refresh_token');
+
+      // ✅ 修复 #3：通知 AuthBloc 会话失效，触发自动跳登录。
+      // 防抖：同一会话内只通知一次（多个并发 401 刷新失败不会重复回调）；
+      // AuthBloc 侧也对 AuthSessionExpired 做了幂等处理，这里是双保险。
+      // 回调可能在 ApiClient 注册后、上层接线前为 null（如测试），需判空。
+      if (!_sessionExpiredNotified) {
+        _sessionExpiredNotified = true;
+        try {
+          _apiClient.onSessionExpired?.call();
+        } catch (cbErr, cbStack) {
+          debugPrint('[RefreshToken] onSessionExpired callback error: '
+              '$cbErr\n$cbStack');
+        }
+      }
 
       for (final pending in _pendingRequests) {
         pending.completer.completeError(err);

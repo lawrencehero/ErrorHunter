@@ -31,14 +31,29 @@ func (h *QuestionHandler) List(c *gin.Context) {
 	// 解析查询参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	// 越界保护：page<1 会让 offset 变成负数，pageSize<=0 会让 LIMIT 异常；
+	// pageSize 过大拖垮 DB。统一钳制到合法区间。
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
 	if pageSize > 50 {
 		pageSize = 50
+	}
+
+	// 搜索关键词：前端 searchQuestions 发的是 `q`，列表筛选也可能传 `keyword`，
+	// 两者都接受，`q` 优先（更贴近搜索语义），避免前端搜不到结果。
+	keyword := c.Query("q")
+	if keyword == "" {
+		keyword = c.Query("keyword")
 	}
 
 	filter := service.ListFilter{
 		Page:     page,
 		PageSize: pageSize,
-		Keyword:  c.Query("keyword"),
+		Keyword:  keyword,
 		SortBy:   c.DefaultQuery("sort_by", "created_at"),
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
@@ -214,6 +229,16 @@ func (h *QuestionHandler) ListRecycleBin(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	// 越界保护，与 List 一致
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 50 {
+		pageSize = 50
+	}
 
 	result, err := h.questionService.ListRecycleBin(c.Request.Context(), userID, page, pageSize)
 	if err != nil {

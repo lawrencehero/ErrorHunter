@@ -33,6 +33,7 @@ class ReviewRepositoryMock implements ReviewRepository {
     required String selfRating,
     int? reviewDurationSec,
     bool isReviveCheck = false,
+    String? reviveResult,
   }) async {
     // no-op
   }

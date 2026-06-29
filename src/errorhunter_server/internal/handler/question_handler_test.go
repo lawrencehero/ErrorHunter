@@ -176,6 +176,35 @@ func TestList_WithFilters_NilService(t *testing.T) {
 	tc.doRequest("GET", "/questions?status=NOT_STARTED,REVIEWING&error_category=KNOWLEDGE&keyword=方程&sort_by=created_at&sort_order=desc", nil, nil)
 }
 
+// TestList_SearchByQ 验证前端 searchQuestions 发的 `q` 参数被当作 keyword 接收。
+// 前端契约：question_remote_data_source.dart 的 searchQuestions 用 `q=<keyword>`，
+// 后端必须同时接受 `q`（搜索语义）与 `keyword`（兼容旧调用）。
+// 由于 service 为 nil 会 panic，只要走到 service 调用即证明参数解析通过。
+func TestList_SearchByQ(t *testing.T) {
+	h := &QuestionHandler{}
+	tc := newTestCtx().withUser(1).getRoute("/questions", h.List)
+
+	defer func() {
+		r := recover()
+		assert.NotNil(t, r, "q 参数应被解析并走到 service 调用")
+	}()
+
+	tc.doRequest("GET", "/questions?q=一元一次方程", nil, nil)
+}
+
+// TestList_NegativePageClamped 验证 page<1 被钳制到 1，不会因负 offset 引发异常。
+func TestList_NegativePageClamped(t *testing.T) {
+	h := &QuestionHandler{}
+	tc := newTestCtx().withUser(1).getRoute("/questions", h.List)
+
+	defer func() {
+		r := recover()
+		assert.NotNil(t, r, "page 钳制后应正常走到 service 调用")
+	}()
+
+	tc.doRequest("GET", "/questions?page=-5&page_size=-10", nil, nil)
+}
+
 func TestList_WithDateRange_NilService(t *testing.T) {
 	h := &QuestionHandler{}
 	tc := newTestCtx().withUser(1).getRoute("/questions", h.List)

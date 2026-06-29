@@ -13,6 +13,9 @@ class MockQuestionRepository implements QuestionRepository {
   List<QuestionModel> mockQuestions = [];
   OcrResult ocrResult = const OcrResult(text: "OCR text result");
 
+  /// 控制 updateQuestion 是否抛异常（测试 QuestionUpdateFailed 分支）
+  bool shouldFailUpdate = false;
+
   @override
   Future<List<QuestionModel>> getQuestions({
     ErrorCategory? category,
@@ -53,6 +56,9 @@ class MockQuestionRepository implements QuestionRepository {
 
   @override
   Future<void> updateQuestion(QuestionModel question) async {
+    if (shouldFailUpdate) {
+      throw Exception("update failed");
+    }
     final index = mockQuestions.indexWhere((q) => q.id == question.id);
     if (index >= 0) mockQuestions[index] = question;
   }
@@ -63,6 +69,21 @@ class MockQuestionRepository implements QuestionRepository {
   }
 
   @override
+  Future<List<QuestionModel>> getRecycleBin({
+    int page = 1,
+    int pageSize = 20,
+  }) async => const [];
+
+  @override
+  Future<void> restoreQuestion(String id) async {}
+
+  @override
+  Future<void> permanentDeleteQuestion(String id) async {}
+
+  @override
+  Future<int> clearRecycleBin() async => 0;
+
+  @override
   Future<OcrResult> ocrImage(String imagePath) async => ocrResult;
 }
 
@@ -70,11 +91,12 @@ QuestionModel createMockQuestion({
   String id = "q001",
   ErrorCategory category = ErrorCategory.knowledge,
   QuestionStatus status = QuestionStatus.notStarted,
+  String ocrText = "Calculate 2+3=?",
 }) {
   return QuestionModel(
     id: id,
     imageUrl: "https://example.com/img/" + id + ".jpg",
-    ocrText: "Calculate 2+3=?",
+    ocrText: ocrText,
     errorCategory: category,
     status: status,
     knowledgePoints: const [
@@ -222,6 +244,60 @@ void main() {
       );
       final state = bloc.state as OcrCompleted;
       expect(state.text, "OCR text result");
+    });
+  });
+
+  group("UpdateQuestion", () {
+    test("成功后 emit QuestionDetailLoaded 携带更新后的 question", () async {
+      final original = createMockQuestion(id: "q001", ocrText: "旧文本");
+      mockRepo.mockQuestions = [original];
+
+      // 先加载详情，让 bloc 进入 QuestionDetailLoaded 态
+      bloc.add(const LoadQuestionDetail("q001"));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<QuestionDetailLoading>(),
+          isA<QuestionDetailLoaded>(),
+        ]),
+      );
+
+      // 更新 ocrText
+      final updated = original.copyWith(ocrText: "新文本");
+      bloc.add(UpdateQuestion(updated));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<QuestionDetailLoaded>(),
+        ]),
+      );
+
+      final state = bloc.state as QuestionDetailLoaded;
+      expect(state.question.ocrText, "新文本",
+          reason: "更新后应携带新 question，否则详情页 BlocBuilder 不重建");
+    });
+
+    test("失败 emit QuestionUpdateFailed", () async {
+      final original = createMockQuestion(id: "q001");
+      mockRepo.mockQuestions = [original];
+      mockRepo.shouldFailUpdate = true;
+
+      bloc.add(const LoadQuestionDetail("q001"));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<QuestionDetailLoading>(),
+          isA<QuestionDetailLoaded>(),
+        ]),
+      );
+
+      bloc.add(UpdateQuestion(original));
+      await expectLater(
+        bloc.stream,
+        emitsInOrder([
+          isA<QuestionUpdateFailed>(),
+        ]),
+      );
     });
   });
 

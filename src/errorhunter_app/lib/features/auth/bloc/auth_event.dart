@@ -59,3 +59,18 @@ class SetNickname extends AuthEvent {
 class Logout extends AuthEvent {
   const Logout();
 }
+
+/// 会话过期（refresh token 失效 / 被踢 / 后端 401）
+///
+/// 由 ApiClient.onSessionExpired 回调触发，AuthBloc 收到后清本地态并 emit
+/// Unauthenticated，路由 refreshListenable 自动 redirect 到 /login。
+///
+/// 与 Logout 的区别：Logout 是用户主动登出（会先调后端 /auth/logout 撤销
+/// redis token）；AuthSessionExpired 是后端已判定会话失效，本地不能再调
+/// 受保护接口（access token 已无效），只需清本地态。
+///
+/// 幂等：AuthBloc 收到第一个 AuthSessionExpired 即 emit Unauthenticated，
+/// 后续并发触发的同名事件在已是 Unauthenticated 时不再重复 emit。
+class AuthSessionExpired extends AuthEvent {
+  const AuthSessionExpired();
+}

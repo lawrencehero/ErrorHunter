@@ -159,7 +159,7 @@ class _ReportCard extends StatelessWidget {
               const Text('📊 ', style: TextStyle(fontSize: 18)),
               Expanded(
                 child: Text(
-                  '第${report.weekNumber}周周报',
+                  report.title,
                   style: AppTypography.primary.h3.copyWith(
                     color: tc.primary,
                   ),

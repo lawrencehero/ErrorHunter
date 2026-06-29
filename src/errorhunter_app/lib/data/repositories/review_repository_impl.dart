@@ -28,11 +28,13 @@ class ReviewRepositoryImpl implements ReviewRepository {
     required String selfRating,
     int? reviewDurationSec,
     bool isReviveCheck = false,
+    String? reviveResult,
   }) =>
       _dataSource.submitReviewResult(
         questionId: questionId,
         selfRating: selfRating,
         reviewDurationSec: reviewDurationSec,
         isReviveCheck: isReviveCheck,
+        reviveResult: reviveResult,
       );
 }

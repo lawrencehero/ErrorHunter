@@ -122,9 +122,9 @@ func main() {
 	// 初始化Handler
 	authHandler := handler.NewAuthHandler(authService)
 	questionHandler := handler.NewQuestionHandler(questionService)
-	reviewHandler := handler.NewReviewHandler(reviewService)
+	reviewHandler := handler.NewReviewHandler(reviewService, userRepo)
 	reportHandler := handler.NewReportHandler(reportRepo, userRepo)
-	userHandler := handler.NewUserHandler(userRepo)
+	userHandler := handler.NewUserHandler(userRepo, authService)
 	syncHandler := handler.NewSyncHandler()
 	kpHandler := handler.NewKnowledgePointHandler(kpRepo)
 
@@ -136,6 +136,8 @@ func main() {
 	if uploadHandler != nil {
 		questionService.SetImageDeleter(uploadHandler)
 	}
+	// 注入复习记录仓库：错题详情接口返回最近复习记录（详情页"复习历史"）
+	questionService.SetReviewRepo(reviewRepo)
 
 	// 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
@@ -223,6 +225,7 @@ func main() {
 			users := authenticated.Group("/users")
 			{
 				users.GET("/me", userHandler.GetMe)
+				users.GET("/me/settings", userHandler.GetSettings)
 				users.PUT("/me/settings", userHandler.UpdateSettings)
 				users.POST("/me/deactivate", userHandler.Deactivate)
 			}

@@ -71,7 +71,7 @@ class QuestionDetailLoaded extends QuestionState {
   final QuestionModel question;
 
   @override
-  List<Object?> get props => [question.id];
+  List<Object?> get props => [question];
 }
 
 // ─── Add States ───────────────────────────────────────────────

@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'data/remote/api_client.dart';
 import 'di/injection.dart';
 import 'features/auth/bloc/auth_bloc.dart';
+import 'features/auth/bloc/auth_event.dart';
 import 'features/question/bloc/question_bloc.dart';
 import 'features/report/bloc/report_bloc.dart';
 import 'features/review/bloc/review_bloc.dart';
@@ -19,6 +21,18 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await configureDependencies();
+
+  // ─── 接线：ApiClient 会话失效 → AuthBloc 自动跳登录 ──────────
+  // 时序：configureDependencies() 已注册 ApiClient（singleton）和
+  // AuthBloc（lazySingleton），此处访问 sl<AuthBloc>() 会触发其实例化，
+  // 之后两者都已就绪。refresh token 刷新失败时 ApiClient 调用此回调，
+  // AuthBloc 收到 AuthSessionExpired → emit Unauthenticated → 路由
+  // refreshListenable 自动 redirect 到 /login。
+  // 幂等：AuthBloc._onSessionExpired 在已是 Unauthenticated 时直接 return，
+  // 多个并发 401 不会重复跳转。
+  sl<ApiClient>().onSessionExpired =
+      () => sl<AuthBloc>().add(const AuthSessionExpired());
+
   await ThemeManager.instance.init();
 
   SystemChrome.setSystemUIOverlayStyle(

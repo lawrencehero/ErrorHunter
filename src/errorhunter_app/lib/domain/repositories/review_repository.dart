@@ -16,11 +16,14 @@ abstract class ReviewRepository {
   ///
   /// [selfRating] 为已映射到后端的字符串（MASTERED/PARTIAL/FAILED），
   /// 映射逻辑放在 ReviewBloc._mapToBackendRating，repository 透传。
+  /// [reviveResult] 仅复活检测题需要（REMEMBERED/FORGOTTEN），
+  /// 后端 handleReviveCheck 强制要求该字段，缺失返回 EReviveResultRequired。
   /// 提交失败由调用方 try/catch 容错，不阻断复习流程。
   Future<void> submitReviewResult({
     required String questionId,
     required String selfRating,
     int? reviewDurationSec,
     bool isReviveCheck = false,
+    String? reviveResult,
   });
 }

@@ -24,9 +24,15 @@ class ReportRemoteDataSource {
   }
 
   /// 获取周报列表
+  ///
+  /// 后端 `/reports/weekly` 默认 page_size=10、上限 20。周报每周一条，
+  /// 默认 10 条只覆盖约 2.5 个月历史，老用户会丢失更早周报。
+  /// 这里显式请求 page_size=20（后端上限），覆盖约 5 个月，零 UI 改动。
+  /// 完整分页（滚动加载更多）见 TODO。
   Future<List<WeeklySummary>> getWeeklySummaries() async {
     final response = await _client.get<Map<String, dynamic>>(
       ApiEndpoints.weeklyReports,
+      queryParameters: const {'page': 1, 'page_size': 20},
     );
 
     final data = response.data?['data'] as Map<String, dynamic>?;
@@ -37,8 +43,12 @@ class ReportRemoteDataSource {
       return WeeklySummary(
         id: (map['id'] ?? 0).toString(),
         weekNumber: map['week_number'] as int? ?? 0,
-        startDate: DateTime.parse(map['week_start'] as String),
-        endDate: DateTime.parse(map['week_end'] as String),
+        // 后端 WeekStart/WeekEnd 是 DATE 列，但 Go time.Time JSON 序列化带时间
+        // （上海 00:00 → UTC 前一天 16:00）。Flutter DateTime.parse 对带 Z 的
+        // 字符串返回 UTC DateTime，直接取 .day 会偏移一天（显示 6/21 而非 6/22）。
+        // 统一 toLocal 还原到用户本地时区后再展示。
+        startDate: DateTime.parse(map['week_start'] as String).toLocal(),
+        endDate: DateTime.parse(map['week_end'] as String).toLocal(),
         newCount: map['new_questions'] as int? ?? 0,
         eliminatedCount: map['mastered_questions'] as int? ?? 0,
         reviewCount: map['review_count'] as int? ?? 0,
@@ -57,57 +67,7 @@ class ReportRemoteDataSource {
       throw Exception('Weekly report not found');
     }
 
-    // 构造 summary
-    final summary = WeeklySummary(
-      id: reportId,
-      weekNumber: data['week_number'] as int? ?? 0,
-      startDate: DateTime.parse(data['week_start'] as String),
-      endDate: DateTime.parse(data['week_end'] as String),
-      newCount: data['new_questions'] as int? ?? 0,
-      eliminatedCount: data['mastered_questions'] as int? ?? 0,
-      reviewCount: data['review_count'] as int? ?? 0,
-    );
-
-    return WeeklyReportModel(
-      summary: summary,
-      newCountVsLastWeek: _calcDelta(
-        data['new_questions'] as int? ?? 0,
-        data['prev_week_new'] as int?,
-      ),
-      eliminatedCountVsLastWeek: _calcDelta(
-        data['mastered_questions'] as int? ?? 0,
-        data['prev_week_mastered'] as int?,
-      ),
-      reviewCountVsLastWeek: 0, // TODO: 后端待补充 prev_week_review_count 字段，当前暂用 0 占位
-      accuracyRate: (data['review_accuracy'] as num?)?.toDouble() ?? 0.0,
-      accuracyRateVsLastWeek: 0.0, // TODO: 后端待补充 prev_week_accuracy 字段，当前暂用 0.0 占位
-      achievements: const [], // TODO: 后端待补充 achievements 列表接口，当前返回空数组
-      topKnowledgePoints: _parseTopKnowledge(data['weak_knowledge_top']),
-      mostFrequentErrorCategory:
-          data['top_error_category'] as String? ?? 'UNKNOWN',
-      mostFrequentErrorPercentage:
-          (data['top_error_category_percentage'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
-
-  /// 计算与上周的差值
-  int _calcDelta(int current, int? previous) {
-    if (previous == null) return 0;
-    return current - previous;
-  }
-
-  /// 解析 Top 知识点
-  List<KnowledgeRankItem> _parseTopKnowledge(dynamic rawData) {
-    if (rawData == null) return [];
-    if (rawData is! List) return [];
-
-    return rawData.asMap().entries.map((entry) {
-      final item = entry.value as Map<String, dynamic>;
-      return KnowledgeRankItem(
-        name: item['name'] as String? ?? '',
-        errorCount: item['count'] as int? ?? 0,
-        rank: entry.key + 1,
-      );
-    }).toList();
+    // 解析逻辑抽到 WeeklyReportModel.fromDetailJson，便于单测覆盖。
+    return WeeklyReportModel.fromDetailJson(data, reportId: reportId);
   }
 }

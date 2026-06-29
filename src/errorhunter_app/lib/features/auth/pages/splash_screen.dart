@@ -37,6 +37,9 @@ class _SplashScreenState extends State<SplashScreen>
   /// 最大超时 Timer（5s），防止 AuthBloc 卡死导致白屏
   Timer? _maxTimeoutTimer;
 
+  /// 最短品牌展示 Timer（800ms）
+  Timer? _minDisplayTimer;
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +61,7 @@ class _SplashScreenState extends State<SplashScreen>
     context.read<AuthBloc>().add(const CheckAuthStatus());
 
     // 最短品牌展示 800ms
-    Timer(const Duration(milliseconds: 800), () {
+    _minDisplayTimer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       _minDisplayElapsed = true;
       _tryNavigate();
@@ -95,6 +98,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _maxTimeoutTimer?.cancel();
+    _minDisplayTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }

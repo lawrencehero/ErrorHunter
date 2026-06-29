@@ -18,6 +18,7 @@ import (
 // QuestionService 错题服务
 type QuestionService struct {
 	questionRepo *repository.QuestionRepository
+	reviewRepo   *repository.ReviewRecordRepository
 	userRepo     *repository.UserRepository
 	db           *gorm.DB
 	imageDeleter ImageObjectDeleter
@@ -41,6 +42,12 @@ func objectKeyFromImageURL(imageURL string) string {
 
 // SetImageDeleter 注入对象存储删除能力，用于永久删除错题时清理 MinIO 图片。
 func (s *QuestionService) SetImageDeleter(d ImageObjectDeleter) { s.imageDeleter = d }
+
+// SetReviewRepo 注入复习记录仓库，用于错题详情填充"复习历史"。
+// 可选注入：nil 时详情接口不返回 review_records（前端回退空历史）。
+func (s *QuestionService) SetReviewRepo(r *repository.ReviewRecordRepository) {
+	s.reviewRepo = r
+}
 
 // deleteImageBestEffort 尽力删除图片对象，失败仅记日志，不阻断业务流程。
 func (s *QuestionService) deleteImageBestEffort(ctx context.Context, imageURL, scene string) {
@@ -67,6 +74,10 @@ func NewQuestionService(
 		db:           db,
 	}
 }
+
+// detailReviewHistoryLimit 错题详情返回的最近复习记录条数（倒序）。
+// 20 条覆盖一题完整艾宾浩斯复习周期 + 复活检测，足够详情页时间线展示。
+const detailReviewHistoryLimit = 20
 
 // KnowledgePointInput 知识点对象输入（id 可为 int 字符串或自定义非数字 id）
 type KnowledgePointInput struct {
@@ -296,6 +307,18 @@ func (s *QuestionService) GetByID(ctx context.Context, id, userID int64) (*model
 		return nil, errcode.EQuestionBelongsToOther
 	}
 	fillTotalReviewRounds(question)
+
+	// 填充最近 N 条复习记录（倒序），供详情页"复习历史"时间线展示。
+	// 历史上详情接口不返回 review_records，前端详情页复习历史恒空。
+	// reviewRepo 未注入（旧调用方/测试）时跳过，前端回退空历史。
+	if s.reviewRepo != nil {
+		records, rerr := s.reviewRepo.ListByQuestion(ctx, question.ID, detailReviewHistoryLimit)
+		if rerr != nil {
+			log.Printf("[WARN] ListByQuestion failed for question %d: %v", question.ID, rerr)
+		} else {
+			question.ReviewRecords = records
+		}
+	}
 	return question, nil
 }
 
@@ -326,6 +349,29 @@ type Pagination struct {
 	Total    int64 `json:"total"`
 }
 
+// parseDateFilter 把 handler 读到的 start_date / end_date 字符串（YYYY-MM-DD）
+// 解析为 repo 期望的 *time.Time（Local 时区当天 00:00）。
+//
+// 语义说明（与 question_repository.List 配合）：
+//   - StartDate：repo 直接用 created_at >= 当天00:00；
+//   - EndDate：repo 会再 +24h 形成 [end, end+1day) 半开区间，覆盖 end 当天全天。
+//     因此这里只传「当天 00:00」，不要补 23:59:59，否则 repo +24h 会多吞一天。
+//
+// 非法格式或空串返回 nil（不过滤），保证单个非法日期不会让整个筛选失效。
+func parseDateFilter(startStr, endStr *string) (startDate, endDate *time.Time) {
+	if startStr != nil && *startStr != "" {
+		if t, err := time.ParseInLocation("2006-01-02", *startStr, time.Local); err == nil {
+			startDate = &t
+		}
+	}
+	if endStr != nil && *endStr != "" {
+		if t, err := time.ParseInLocation("2006-01-02", *endStr, time.Local); err == nil {
+			endDate = &t
+		}
+	}
+	return startDate, endDate
+}
+
 // List 获取错题列表
 func (s *QuestionService) List(ctx context.Context, userID int64, filter ListFilter) (*ListResult, error) {
 	repoFilter := repository.ListFilter{
@@ -351,6 +397,11 @@ func (s *QuestionService) List(ctx context.Context, userID int64, filter ListFil
 	}
 
 	repoFilter.KnowledgePointID = filter.KnowledgePointID
+
+	// 日期筛选：handler 读到的 start_date / end_date 是字符串（YYYY-MM-DD），
+	// repo 期望 *time.Time。原代码漏了这一段映射，导致日期筛选完全失效。
+	// 解析逻辑抽到 parseDateFilter 便于单测。
+	repoFilter.StartDate, repoFilter.EndDate = parseDateFilter(filter.StartDate, filter.EndDate)
 
 	result, err := s.questionRepo.List(ctx, repoFilter)
 	if err != nil {

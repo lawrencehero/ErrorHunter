@@ -22,4 +22,9 @@ abstract class AuthRepository {
 
   /// 更新昵称
   Future<void> updateNickname(String nickname);
+
+  /// 登出（通知后端撤销 token）
+  ///
+  /// 失败不应阻塞本地登出：调用方需 try/catch 后无论成败都清本地态。
+  Future<void> logout();
 }

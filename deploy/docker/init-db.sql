@@ -228,6 +228,9 @@ CREATE TABLE weekly_reports (
     review_accuracy     DECIMAL(5,2)   NOT NULL DEFAULT 0.00,
     prev_week_new       INT,
     prev_week_mastered  INT,
+    prev_week_review_count INT,
+    prev_week_accuracy  DECIMAL(5,2),
+    achievements        JSONB          DEFAULT '[]',
     top_error_category             error_category_enum,
     top_error_category_percentage  DECIMAL(5,2)  NOT NULL DEFAULT 0.00,
     weak_knowledge_top             JSONB,
@@ -248,6 +251,9 @@ COMMENT ON COLUMN weekly_reports.week_number IS '周编号YYYYWW';
 COMMENT ON COLUMN weekly_reports.review_accuracy IS '本周复习正确率(%)';
 COMMENT ON COLUMN weekly_reports.top_error_category_percentage IS '本周最多错因占新建错题比例(%)';
 COMMENT ON COLUMN weekly_reports.weak_knowledge_top IS '薄弱知识点TOP3 JSON数组';
+COMMENT ON COLUMN weekly_reports.prev_week_review_count IS '上周复习次数(取上周周报行)';
+COMMENT ON COLUMN weekly_reports.prev_week_accuracy IS '上周复习正确率(%)(取上周周报行)';
+COMMENT ON COLUMN weekly_reports.achievements IS '本周成就文案列表JSON数组[]string';
 
 -- sync_queue 离线同步队列表
 CREATE TABLE sync_queue (

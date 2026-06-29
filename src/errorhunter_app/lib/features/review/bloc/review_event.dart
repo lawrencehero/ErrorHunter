@@ -72,3 +72,10 @@ class CheckEliminate extends ReviewEvent {
 class ResetEliminateState extends ReviewEvent {
   const ResetEliminateState();
 }
+
+/// 中途退出复习：提交仍处于撤销窗口内（EvaluationPending）的评价，
+/// 避免用户评了但未过 4 秒窗口就退出导致评价静默丢失。
+/// 已评且已提交的题不受影响；纯导航事件，不改变复习状态机。
+class ExitReview extends ReviewEvent {
+  const ExitReview();
+}

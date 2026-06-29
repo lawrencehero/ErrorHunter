@@ -59,10 +59,19 @@ class _KnowledgePointSelectorState extends State<KnowledgePointSelector> {
   }
 
   void _addCustom(String name) {
-    if (name.trim().isEmpty) return;
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    // 去重：忽略大小写比较，避免重复添加同名知识点
+    final isDuplicate = widget.selectedPoints.any(
+      (kp) => kp.name.toLowerCase() == trimmed.toLowerCase(),
+    );
+    if (isDuplicate) {
+      _customController.clear();
+      return;
+    }
     final kp = KnowledgePoint(
       id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-      name: name.trim(),
+      name: trimmed,
       subject: '自定义',
     );
     widget.onChanged([...widget.selectedPoints, kp]);

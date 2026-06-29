@@ -134,9 +134,13 @@ class _ImageCropSectionState extends State<ImageCropSection> {
 
   Widget _buildImagePreview({required bool isGlass, required Color accent}) {
     final tc = context.textColors;
+    // 换图时通过 key 强制 InteractiveCropFrame 重建，重置内部裁剪框到默认 90% 区域，
+    // 避免换图后内部 _cropRect 与父页 _cropRect 不一致导致裁剪坐标错位。
+    final cropKey = ValueKey(widget.imagePath);
     // Web 环境下的 Mock 图片预览
     if (kIsWeb || widget.imagePath == 'demo_question.jpg') {
       return InteractiveCropFrame(
+        key: cropKey,
         onCropChanged: widget.onCropChanged,
         imageSize: widget.imageSize,
         isGlass: isGlass,
@@ -196,6 +200,7 @@ class _ImageCropSectionState extends State<ImageCropSection> {
 
     // 原生环境：真实图片 + 交互式裁剪框
     return InteractiveCropFrame(
+      key: cropKey,
       onCropChanged: widget.onCropChanged,
       imageSize: widget.imageSize,
       isGlass: isGlass,

@@ -81,6 +81,31 @@ class QuestionRepositoryMock implements QuestionRepository {
   }
 
   @override
+  Future<List<QuestionModel>> getRecycleBin({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    return [];
+  }
+
+  @override
+  Future<void> restoreQuestion(String id) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
+  @override
+  Future<void> permanentDeleteQuestion(String id) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+
+  @override
+  Future<int> clearRecycleBin() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    return 0;
+  }
+
+  @override
   Future<OcrResult> ocrImage(String imagePath) async {
     await Future.delayed(const Duration(seconds: 2));
     return OcrResult(text: _dataSource.getMockOcrResult());

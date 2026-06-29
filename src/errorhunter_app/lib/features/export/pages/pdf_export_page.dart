@@ -2,6 +2,7 @@
 /// 流程：筛选 → 预览 → 生成 → 分享
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../di/injection.dart';
@@ -19,6 +20,35 @@ import '../widgets/export_preview_card.dart';
 
 /// 时间范围选项
 enum _TimeRange { thisMonth, lastThreeMonths, all }
+
+/// 导出时间范围（公开枚举，供过滤函数与测试使用）
+enum ExportTimeRange { thisMonth, lastThreeMonths, all }
+
+/// 判断 [createdAt] 是否落在 [range] 范围内（用于 PDF 导出筛选）。
+///
+/// - thisMonth：同年同月。
+/// - lastThreeMonths：从 [now] 前推 3 个月的当天起（含当天），用 `!isBefore`
+///   避免漏掉恰好满 3 个月当天录入的错题。
+/// - all：恒为 true。
+///
+/// 抽离为顶层纯函数以便单元测试覆盖边界。
+@visibleForTesting
+bool isExportableInRange(
+  DateTime createdAt,
+  ExportTimeRange range, {
+  DateTime? now,
+}) {
+  final n = now ?? DateTime.now();
+  switch (range) {
+    case ExportTimeRange.thisMonth:
+      return createdAt.year == n.year && createdAt.month == n.month;
+    case ExportTimeRange.lastThreeMonths:
+      final threeMonthsAgo = DateTime(n.year, n.month - 3, n.day);
+      return !createdAt.isBefore(threeMonthsAgo);
+    case ExportTimeRange.all:
+      return true;
+  }
+}
 
 /// 导出错题预览项
 class _ExportQuestionItem {
@@ -108,21 +138,20 @@ class _PdfExportPageState extends State<PdfExportPage> {
   }
 
   List<_ExportQuestionItem> get _filteredQuestions {
-    final now = DateTime.now();
-    switch (_selectedRange) {
+    final range = _toExportRange(_selectedRange);
+    return _questions
+        .where((q) => isExportableInRange(q.createdAt, range))
+        .toList();
+  }
+
+  static ExportTimeRange _toExportRange(_TimeRange r) {
+    switch (r) {
       case _TimeRange.thisMonth:
-        return _questions
-            .where((q) =>
-                q.createdAt.month == now.month &&
-                q.createdAt.year == now.year)
-            .toList();
+        return ExportTimeRange.thisMonth;
       case _TimeRange.lastThreeMonths:
-        final threeMonthsAgo = DateTime(now.year, now.month - 3, now.day);
-        return _questions
-            .where((q) => q.createdAt.isAfter(threeMonthsAgo))
-            .toList();
+        return ExportTimeRange.lastThreeMonths;
       case _TimeRange.all:
-        return _questions;
+        return ExportTimeRange.all;
     }
   }
 

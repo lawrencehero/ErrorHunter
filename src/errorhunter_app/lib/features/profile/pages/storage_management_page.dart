@@ -61,10 +61,13 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
   /// 任一失败均不阻塞页面：用量失败显示错误态，配额失败用兜底值。
   Future<void> _loadData() async {
     try {
-      final usageFuture = sl<StorageRemoteDataSource>().getUsage();
-      final limitFuture = sl<StorageRemoteDataSource>().getStorageLimit();
-      final usage = await usageFuture;
-      final limit = await limitFuture;
+      // Future.wait 真正并行：原实现两次串行 await 等于顺序请求，违背注释意图。
+      final results = await Future.wait([
+        sl<StorageRemoteDataSource>().getUsage(),
+        sl<StorageRemoteDataSource>().getStorageLimit(),
+      ]);
+      final usage = results[0] as StorageUsage;
+      final limit = results[1] as int?;
 
       if (!mounted) return;
       setState(() {

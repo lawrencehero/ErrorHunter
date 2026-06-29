@@ -166,3 +166,73 @@ func TestReviewQueueResponse_JSONKeys(t *testing.T) {
 	assert.True(t, strings.Contains(jsonStr, `"total_review_rounds":5`),
 		"review_items 题目应显式序列化 total_review_rounds=5（=艾宾浩斯总轮次），got: %s", jsonStr)
 }
+
+// TestBuildReviveReviewRecord_Remembered 复活检测 REMEMBERED 路径生成的 ReviewRecord
+// 字段正确（#9 修复守护）：自评 MASTERED，master_count_after=3，轮次取自 question，
+// 用时透传。复活检测历史上一条记录都不写，导致复习用时/历史丢失。
+func TestBuildReviveReviewRecord_Remembered(t *testing.T) {
+	duration := 45
+	question := &model.Question{
+		ID:          42,
+		UserID:      7,
+		ReviewRound: 5,
+		Status:      model.StatusMastered,
+	}
+	req := SubmitReviewRequest{
+		QuestionID:        42,
+		ReviveResult:      "REMEMBERED",
+		ReviewDurationSec: &duration,
+	}
+
+	rec := buildReviveReviewRecord(question, 7, req, model.RatingMastered, 3)
+
+	assert.Equal(t, int64(42), rec.QuestionID)
+	assert.Equal(t, int64(7), rec.UserID)
+	assert.Equal(t, 5, rec.ReviewRound, "复活复习轮次取自 question.ReviewRound")
+	assert.Equal(t, model.RatingMastered, rec.SelfRating, "REMEMBERED → MASTERED")
+	assert.Equal(t, 3, rec.MasterCountAfter, "已消灭题 master_count_after 保持 3")
+	require.NotNil(t, rec.ReviewDurationSec)
+	assert.Equal(t, 45, *rec.ReviewDurationSec, "复习用时透传到记录")
+}
+
+// TestBuildReviveReviewRecord_Forgotten 复活检测 FORGOTTEN 路径生成的 ReviewRecord
+// 字段正确（#9 修复守护）：自评 FAILED，master_count_after=0（复习计划已重置）。
+func TestBuildReviveReviewRecord_Forgotten(t *testing.T) {
+	question := &model.Question{
+		ID:          42,
+		UserID:      7,
+		ReviewRound: 4,
+		Status:      model.StatusMastered,
+	}
+	req := SubmitReviewRequest{
+		QuestionID:   42,
+		ReviveResult: "FORGOTTEN",
+		// ReviewDurationSec 为 nil（前端未传用时）
+	}
+
+	rec := buildReviveReviewRecord(question, 7, req, model.RatingFailed, 0)
+
+	assert.Equal(t, model.RatingFailed, rec.SelfRating, "FORGOTTEN → FAILED")
+	assert.Equal(t, 0, rec.MasterCountAfter, "复活失败 → master_count 归 0")
+	assert.Equal(t, 4, rec.ReviewRound)
+	assert.Nil(t, rec.ReviewDurationSec, "未传用时记录里也应是 nil")
+}
+
+// TestBuildReviveReviewRecord_FieldParityWithNormalPath 守护：复活检测生成的记录
+// 字段集合与正常 SubmitReview 路径一致（同一 ReviewRecord model），保证
+// weekly_completed / 复习历史统计能正确反映复活检测。
+func TestBuildReviveReviewRecord_FieldParityWithNormalPath(t *testing.T) {
+	duration := 30
+	question := &model.Question{ID: 1, UserID: 2, ReviewRound: 3}
+	req := SubmitReviewRequest{ReviewDurationSec: &duration}
+
+	rec := buildReviveReviewRecord(question, 2, req, model.RatingPartial, 1)
+
+	// 与 review_service.go SubmitReview 正常路径构造的 record 字段一一对应
+	assert.Equal(t, question.ID, rec.QuestionID)
+	assert.Equal(t, question.UserID, rec.UserID)
+	assert.Equal(t, question.ReviewRound, rec.ReviewRound)
+	assert.Equal(t, model.RatingPartial, rec.SelfRating)
+	assert.Equal(t, 1, rec.MasterCountAfter)
+	assert.Equal(t, &duration, rec.ReviewDurationSec)
+}

@@ -38,12 +38,11 @@ class ImagePreview extends StatefulWidget {
 class _ImagePreviewState extends State<ImagePreview> {
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => ImagePreview.show(context, widget.imageUrl, heroTag: widget.heroTag),
-      child: Hero(
-        tag: widget.heroTag ?? widget.imageUrl,
-        child: _buildImage(widget.imageUrl, BoxFit.contain),
-      ),
+    // 内嵌预览组件不再响应点击（点击会无限叠加全屏预览）。
+    // 调用方应直接使用 ImagePreview.show 打开全屏预览。
+    return Hero(
+      tag: widget.heroTag ?? widget.imageUrl,
+      child: _buildImage(widget.imageUrl, BoxFit.contain),
     );
   }
 }

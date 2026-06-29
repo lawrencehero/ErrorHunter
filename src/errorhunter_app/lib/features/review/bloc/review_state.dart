@@ -56,6 +56,8 @@ class ReviewInProgress extends ReviewState {
         currentQuestion.id,
         isAnswerShown,
         isReviveCheck,
+        // daysSinceLastMastered 影响复活检测提示文案，纳入 props 保证变化时重建。
+        daysSinceLastMastered,
         pendingRating,
         eliminatedInSession,
       ];

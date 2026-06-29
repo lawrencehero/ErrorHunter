@@ -37,6 +37,32 @@ func TestGetMe_Authorized_NilRepo(t *testing.T) {
 	tc.doRequest("GET", "/me", nil, nil)
 }
 
+// ===== GetSettings 获取用户设置子集测试 =====
+
+func TestGetSettings_Unauthorized(t *testing.T) {
+	// 未登录访问 GET /users/me/settings 应返回 401
+	h := &UserHandler{}
+	router := gin.New()
+	router.GET("/me/settings", h.GetSettings)
+
+	w := tc_doRequest(router, "GET", "/me/settings", nil, nil)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assertErrorCode(t, w, errcode.ErrUnauthorized)
+}
+
+func TestGetSettings_Authorized_NilRepo(t *testing.T) {
+	// 已认证但 repo 为 nil → panic（证明走到了 repo 调用，路由解析正常）
+	h := &UserHandler{}
+	tc := newTestCtx().withUser(1).getRoute("/me/settings", h.GetSettings)
+
+	defer func() {
+		r := recover()
+		assert.NotNil(t, r, "nil repo 应导致 panic")
+	}()
+
+	tc.doRequest("GET", "/me/settings", nil, nil)
+}
+
 // ===== UpdateSettings 更新用户设置测试 =====
 
 func TestUpdateSettings_Unauthorized(t *testing.T) {
@@ -162,33 +188,57 @@ func TestDeactivate_Unauthorized(t *testing.T) {
 	router := gin.New()
 	router.POST("/deactivate", h.Deactivate)
 
-	w := tc_doRequest(router, "POST", "/deactivate", map[string]interface{}{"confirm": true}, nil)
+	w := tc_doRequest(router, "POST", "/deactivate", map[string]interface{}{
+		"phone":   "13800138000",
+		"code":    "123456",
+		"confirm": true,
+	}, nil)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	assertErrorCode(t, w, errcode.ErrUnauthorized)
 }
 
-func TestDeactivate_NoConfirm(t *testing.T) {
-	// confirm=false应返回参数校验错误（在repo调用之前拦截）
+func TestDeactivate_MissingPhone(t *testing.T) {
+	// 缺少 phone（binding:"required"）→ 400 参数校验
 	h := &UserHandler{}
 	tc := newTestCtx().withUser(1).postRoute("/deactivate", h.Deactivate)
 
 	w := tc.doRequest("POST", "/deactivate", map[string]interface{}{
+		"code":    "123456",
+		"confirm": true,
+	}, nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertErrorCode(t, w, errcode.ErrParamValidation)
+}
+
+func TestDeactivate_MissingCode(t *testing.T) {
+	// 缺少 code（binding:"required"）→ 400 参数校验
+	h := &UserHandler{}
+	tc := newTestCtx().withUser(1).postRoute("/deactivate", h.Deactivate)
+
+	w := tc.doRequest("POST", "/deactivate", map[string]interface{}{
+		"phone":   "13800138000",
+		"confirm": true,
+	}, nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertErrorCode(t, w, errcode.ErrParamValidation)
+}
+
+func TestDeactivate_NoConfirm(t *testing.T) {
+	// confirm=false 应返回参数校验错误（在 repo/OTP 之前拦截）
+	h := &UserHandler{}
+	tc := newTestCtx().withUser(1).postRoute("/deactivate", h.Deactivate)
+
+	w := tc.doRequest("POST", "/deactivate", map[string]interface{}{
+		"phone":   "13800138000",
+		"code":    "123456",
 		"confirm": false,
 	}, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestDeactivate_MissingConfirm(t *testing.T) {
-	// 缺少confirm字段（默认false）→ 应被拦截
-	h := &UserHandler{}
-	tc := newTestCtx().withUser(1).postRoute("/deactivate", h.Deactivate)
-
-	w := tc.doRequest("POST", "/deactivate", map[string]interface{}{}, nil)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
 func TestDeactivate_Confirmed_NilRepo(t *testing.T) {
-	// confirm=true但repo为nil → panic（说明走过了确认检查到达repo调用）
+	// confirm=true + phone + code，但 repo 为 nil → panic
+	// （说明通过了 confirm/字段校验，走到 FindByID 的 repo 调用）
 	h := &UserHandler{}
 	tc := newTestCtx().withUser(1).postRoute("/deactivate", h.Deactivate)
 
@@ -198,6 +248,8 @@ func TestDeactivate_Confirmed_NilRepo(t *testing.T) {
 	}()
 
 	tc.doRequest("POST", "/deactivate", map[string]interface{}{
+		"phone":   "13800138000",
+		"code":    "123456",
 		"confirm": true,
 	}, nil)
 }
@@ -210,12 +262,33 @@ func TestDeactivate_InvalidJSON(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// normalizePhoneForCompare 行为验证（与 auth_service.normalizePhone 对齐）
+func TestNormalizePhoneForCompare(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"标准11位", "13800138000", "13800138000"},
+		{"带空格", " 13800138000 ", "13800138000"},
+		{"带+前缀", "+8613800138000", "13800138000"},
+		{"带86前缀", "8613800138000", "13800138000"},
+		{"空字符串", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, normalizePhoneForCompare(tt.in))
+		})
+	}
+}
+
 // ===== UserHandler 构造函数测试 =====
 
 func TestNewUserHandler(t *testing.T) {
-	h := NewUserHandler(nil)
+	h := NewUserHandler(nil, nil)
 	assert.NotNil(t, h)
 	assert.Nil(t, h.userRepo)
+	assert.Nil(t, h.authService)
 }
 
 // ===== UpdateSettingsRequest 结构体绑定测试 =====

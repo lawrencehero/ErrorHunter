@@ -132,6 +132,13 @@ func (h *ReportHandler) GetWeeklyReports(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	// 越界保护：page<1 → offset 负数；pageSize<=0 → LIMIT 异常。
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
 	if pageSize > 20 {
 		pageSize = 20
 	}

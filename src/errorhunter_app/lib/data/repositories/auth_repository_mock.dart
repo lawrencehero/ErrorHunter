@@ -35,4 +35,10 @@ class AuthRepositoryMock implements AuthRepository {
     // Mock: 无需网络请求，由 BLoC 层直接写入 SharedPreferences
     await Future.delayed(const Duration(milliseconds: 100));
   }
+
+  @override
+  Future<void> logout() async {
+    // Mock: 无后端，仅模拟延迟
+    await Future.delayed(const Duration(milliseconds: 100));
+  }
 }

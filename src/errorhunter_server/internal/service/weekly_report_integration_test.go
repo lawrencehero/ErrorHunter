@@ -134,9 +134,16 @@ func TestGenerateWeeklyReport_AggregationAndIdempotent(t *testing.T) {
 	isoYear, isoWeek := weekStart.ISOWeek()
 	assert.Equal(t, isoYear*100+isoWeek, report1.WeekNumber, "WeekNumber 应为 ISO year*100+week")
 
-	// 第一次生成时上一周周报不存在 → prev 字段为 nil
+	// 第一次生成时上一周周报不存在 → prev 字段为 nil（含新增的 review_count / accuracy）
 	assert.Nil(t, report1.PrevWeekNew, "无上周周报时 PrevWeekNew 应为 nil")
 	assert.Nil(t, report1.PrevWeekMastered, "无上周周报时 PrevWeekMastered 应为 nil")
+	assert.Nil(t, report1.PrevWeekReviewCount, "无上周周报时 PrevWeekReviewCount 应为 nil")
+	assert.Nil(t, report1.PrevWeekAccuracy, "无上周周报时 PrevWeekAccuracy 应为 nil")
+
+	// 成就：本周 new=3/mastered=1/review=4/accuracy=50/streak=1，均不达标 → 空数组
+	achSlice, achErr := report1.Achievements.ToStringSlice()
+	require.NoError(t, achErr, "Achievements 应为合法 JSON 数组")
+	assert.Empty(t, achSlice, "本周各项均不达标时应无成就")
 
 	// 第二次生成（幂等）：应返回同一行，不新增
 	report2, err := svc.GenerateWeeklyReport(ctx, userID, weekStart)
@@ -181,7 +188,8 @@ func TestGenerateWeeklyReport_PrevWeekFromExistingRow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, prevReport.NewQuestions)
 
-	// 在上一周补一道题，再删掉周报重新生成，让上周 NewQuestions=1, MasteredQuestions=0
+	// 在上一周补一道题 + 2 条复习记录（1 MASTERED + 1 FAILED，accuracy=50），
+	// 再删掉周报重新生成，让上周 NewQuestions=1, ReviewCount=2, ReviewAccuracy=50.00。
 	// （直接构造数据 + 删周报重生成，验证 prev 取值）
 	wrTestDB.Where("user_id = ? AND week_start = ?", userID, prevWeekStart).Delete(&model.WeeklyReport{})
 	prevQ := &model.Question{
@@ -190,18 +198,32 @@ func TestGenerateWeeklyReport_PrevWeekFromExistingRow(t *testing.T) {
 		CreatedAt: prevWeekStart.AddDate(0, 0, 2),
 	}
 	require.NoError(t, wrTestDB.Create(prevQ).Error)
+	prevWeekMid := prevWeekStart.AddDate(0, 0, 3)
+	prevRecords := []*model.ReviewRecord{
+		{QuestionID: prevQ.ID, UserID: userID, ReviewRound: 1, SelfRating: model.RatingMastered, MasterCountAfter: 1, ReviewedAt: prevWeekMid},
+		{QuestionID: prevQ.ID, UserID: userID, ReviewRound: 2, SelfRating: model.RatingFailed, MasterCountAfter: 0, ReviewedAt: prevWeekMid},
+	}
+	for i := range prevRecords {
+		require.NoError(t, wrTestDB.Create(prevRecords[i]).Error, "创建上周复习记录失败")
+	}
 	prevReport, err = svc.GenerateWeeklyReport(ctx, userID, prevWeekStart)
 	require.NoError(t, err)
 	assert.Equal(t, 1, prevReport.NewQuestions, "上周 NewQuestions 应为 1")
 	assert.Equal(t, 0, prevReport.MasteredQuestions, "上周 MasteredQuestions 应为 0")
+	assert.Equal(t, 2, prevReport.ReviewCount, "上周 ReviewCount 应为 2")
+	assert.InDelta(t, 50.0, prevReport.ReviewAccuracy, 0.01, "上周 ReviewAccuracy 应为 50.00")
 
-	// 生成本周周报，prev 字段应取上周 row
+	// 生成本周周报，prev 字段应取上周 row（含新增的 review_count / accuracy）
 	thisReport, err := svc.GenerateWeeklyReport(ctx, userID, weekStart)
 	require.NoError(t, err)
 	require.NotNil(t, thisReport.PrevWeekNew, "PrevWeekNew 不应为 nil")
 	require.NotNil(t, thisReport.PrevWeekMastered, "PrevWeekMastered 不应为 nil")
 	assert.Equal(t, 1, *thisReport.PrevWeekNew, "PrevWeekNew 应取上周 NewQuestions=1")
 	assert.Equal(t, 0, *thisReport.PrevWeekMastered, "PrevWeekMastered 应取上周 MasteredQuestions=0")
+	require.NotNil(t, thisReport.PrevWeekReviewCount, "PrevWeekReviewCount 不应为 nil")
+	assert.Equal(t, 2, *thisReport.PrevWeekReviewCount, "PrevWeekReviewCount 应取上周 ReviewCount=2")
+	require.NotNil(t, thisReport.PrevWeekAccuracy, "PrevWeekAccuracy 不应为 nil")
+	assert.InDelta(t, 50.0, *thisReport.PrevWeekAccuracy, 0.01, "PrevWeekAccuracy 应取上周 ReviewAccuracy=50.00")
 
 	// 清理
 	wrTestDB.Where("user_id = ?", userID).Delete(&model.ReviewRecord{})
@@ -241,6 +263,106 @@ func TestGenerateWeeklyReport_EmptyWeek(t *testing.T) {
 	assert.Equal(t, "[]", string(report.WeakKnowledgeTop), "空周 WeakKnowledgeTop 应为 []")
 
 	// 清理
+	wrTestDB.Where("user_id = ?", userID).Delete(&model.WeeklyReport{})
+	wrTestDB.Delete(&model.User{}, userID)
+}
+
+// TestGenerateWeeklyReport_Achievements 验证基于本周统计自动生成成就文案，
+// 且成就落库为 JSONB []string，可被前端反序列化。
+//
+// 构造：本周 6 道新增错题（new=6 ≥5 → 勤勉录入），1 道 mastered_at 落本周
+// （mastered=1 <10，不触发消灭能手），21 条复习记录（review=21 ≥20 → 复习达人）
+// 其中 16 条 MASTERED（accuracy=16/21*100≈76.19 ≥75 → 高正确率）；复习记录
+// 落在本周周一~周五共 5 个不同日期（streak=5 ≥5 → 连续打卡达人，但 <7 不触发全勤）。
+func TestGenerateWeeklyReport_Achievements(t *testing.T) {
+	ctx := context.Background()
+	weekStart := LastCompletedWeekStart(time.Now())
+
+	phone := fmt.Sprintf("139%08d", (time.Now().UnixNano()/3)%100000000)
+	user := &model.User{Phone: phone, Grade: model.Grade33, DailyReviewLimit: 30}
+	require.NoError(t, wrTestDB.Create(user).Error)
+	userID := user.ID
+
+	wrTestDB.Where("user_id = ?", userID).Delete(&model.WeeklyReport{})
+
+	// 本周 6 道新增错题
+	weekMid := weekStart.AddDate(0, 0, 3)
+	questions := make([]*model.Question, 0, 6)
+	for i := 0; i < 6; i++ {
+		q := &model.Question{
+			UserID: userID, Status: model.StatusReviewing, ImageURL: fmt.Sprintf("http://x/ach%d", i),
+			ErrorCategory: model.ErrorKnowledge, NextReviewDate: weekMid, CreatedAt: weekMid,
+		}
+		require.NoError(t, wrTestDB.Create(q).Error)
+		questions = append(questions, q)
+	}
+
+	// 让第 1 道题本周消灭（mastered_at 落本周）
+	require.NoError(t, wrTestDB.Model(&model.Question{}).
+		Where("id = ?", questions[0].ID).
+		Updates(map[string]interface{}{"mastered_at": weekMid, "status": model.StatusMastered}).Error)
+
+	// 21 条复习记录：16 MASTERED + 5 FAILED，accuracy=16/21*100≈76.19（≥75 → 高正确率）
+	// 分布在周一~周五 5 个不同日期（每天至少 1 条），streak=5（≥5 → 连续打卡达人，<7 不触发全勤）
+	// 周一~周四各 4 条 = 16 条，周五 5 条 = 5 条，共 21 条；前 16 条取 MASTERED，后 5 条取 FAILED。
+	records := make([]*model.ReviewRecord, 0, 21)
+	masteredRemaining := 16
+	failedRemaining := 5
+	for day := 0; day < 5; day++ {
+		reviewDay := weekStart.AddDate(0, 0, day)
+		dayCount := 4
+		if day == 4 {
+			dayCount = 5
+		}
+		for i := 0; i < dayCount; i++ {
+			var rating model.SelfRating
+			if masteredRemaining > 0 {
+				rating = model.RatingMastered
+				masteredRemaining--
+			} else if failedRemaining > 0 {
+				rating = model.RatingFailed
+				failedRemaining--
+			} else {
+				rating = model.RatingMastered
+			}
+			records = append(records, &model.ReviewRecord{
+				QuestionID: questions[0].ID, UserID: userID, ReviewRound: 1,
+				SelfRating: rating, MasterCountAfter: 1, ReviewedAt: reviewDay,
+			})
+		}
+	}
+	for i := range records {
+		require.NoError(t, wrTestDB.Create(records[i]).Error, "创建复习记录失败")
+	}
+
+	reportRepo := repository.NewWeeklyReportRepository(wrTestDB)
+	questionRepo := repository.NewQuestionRepository(wrTestDB)
+	reviewRepo := repository.NewReviewRecordRepository(wrTestDB)
+	userRepo := repository.NewUserRepository(wrTestDB)
+	svc := NewWeeklyReportService(reportRepo, questionRepo, reviewRepo, userRepo, wrTestDB)
+
+	report, err := svc.GenerateWeeklyReport(ctx, userID, weekStart)
+	require.NoError(t, err)
+	assert.Equal(t, 6, report.NewQuestions, "NewQuestions 应为 6")
+	assert.Equal(t, 1, report.MasteredQuestions, "MasteredQuestions 应为 1")
+	assert.Equal(t, 21, report.ReviewCount, "ReviewCount 应为 21")
+	assert.InDelta(t, 76.19, report.ReviewAccuracy, 0.01, "ReviewAccuracy 应为 76.19")
+
+	// 成就应包含：勤勉录入(new≥5)、复习达人(review≥20)、高正确率(accuracy≥75)、连续打卡达人(streak≥5)
+	// 不含：消灭能手(mastered=1<10)、全勤王者(streak=5<7)
+	ach, achErr := report.Achievements.ToStringSlice()
+	require.NoError(t, achErr, "Achievements 应为合法 JSON 数组")
+	assert.Contains(t, ach, "勤勉录入")
+	assert.Contains(t, ach, "复习达人")
+	assert.Contains(t, ach, "高正确率")
+	assert.Contains(t, ach, "连续打卡达人")
+	assert.NotContains(t, ach, "消灭能手", "mastered=1 不应触发消灭能手")
+	assert.NotContains(t, ach, "全勤王者", "streak=5 不应触发全勤王者")
+	assert.Len(t, ach, 4, "应恰好 4 条成就")
+
+	// 清理
+	wrTestDB.Where("user_id = ?", userID).Delete(&model.ReviewRecord{})
+	wrTestDB.Where("user_id = ?", userID).Delete(&model.Question{})
 	wrTestDB.Where("user_id = ?", userID).Delete(&model.WeeklyReport{})
 	wrTestDB.Delete(&model.User{}, userID)
 }

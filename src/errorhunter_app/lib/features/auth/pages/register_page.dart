@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../di/injection.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
@@ -37,11 +39,35 @@ class _RegisterPageState extends State<RegisterPage> {
   String _otpCode = '';
   String? _selectedGrade;
   bool _agreedToTerms = false;
-  bool _isLoading = false;
+  /// 正在提交注册（验证 OTP）——仅注册按钮转圈
+  bool _isVerifying = false;
+  /// 正在发送验证码——仅"获取验证码"按钮转圈
+  bool _isSendingOtp = false;
 
   // OTP 倒计时
   Timer? _countdownTimer;
   int _countdownSeconds = 0;
+
+  /// 登录页手机号预填 key（与 AuthBloc._StorageKeys.phone 保持一致）
+  static const _kPhoneKey = 'auth_phone';
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillPhone();
+  }
+
+  /// 预填上次登录的手机号（登出时保留 phone，支付宝式体验）。
+  /// 注册页预填同样合理：用户登出后可能想换号注册，但更多场景是同一手机号重登。
+  void _prefillPhone() {
+    final prefs = sl<SharedPreferences>();
+    final phone = prefs.getString(_kPhoneKey) ?? '';
+    if (phone.length == 11) {
+      final formatted = '${phone.substring(0, 3)} ${phone.substring(3, 7)} ${phone.substring(7)}';
+      _phoneController.text = formatted;
+      _phoneDigits = phone;
+    }
+  }
 
   @override
   void dispose() {
@@ -64,7 +90,10 @@ class _RegisterPageState extends State<RegisterPage> {
   void _onSendOtp() {
     if (!_isPhoneValid) return;
     if (_countdownSeconds > 0) return;
+    // 防止重复点击触发多次发送验证码（多发短信）
+    if (_isVerifying || _isSendingOtp) return;
 
+    setState(() => _isSendingOtp = true);
     context.read<AuthBloc>().add(SendOtp(_phoneDigits));
   }
 
@@ -100,7 +129,9 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     if (!_canSubmit) return;
+    if (_isVerifying || _isSendingOtp) return;
 
+    setState(() => _isVerifying = true);
     context.read<AuthBloc>().add(VerifyOtp(
           phone: _phoneDigits,
           otp: _otpCode,
@@ -141,7 +172,15 @@ class _RegisterPageState extends State<RegisterPage> {
             icon: Icons.error_outline_rounded,
           );
         }
-        _isLoading = state is AuthLoading;
+        // 离开 AuthLoading 后复位各自的 loading 标志
+        if (state is! AuthLoading) {
+          if (_isSendingOtp || _isVerifying) {
+            setState(() {
+              _isSendingOtp = false;
+              _isVerifying = false;
+            });
+          }
+        }
       },
       builder: (context, state) {
         final tc = context.textColors;
@@ -253,28 +292,40 @@ class _RegisterPageState extends State<RegisterPage> {
                       SizedBox(width: AppSpacing.md),
                       // 获取验证码按钮
                       GestureDetector(
-                        onTap: _isPhoneValid && _countdownSeconds == 0 ? _onSendOtp : null,
+                        onTap: _isPhoneValid && _countdownSeconds == 0 && !_isSendingOtp
+                            ? _onSendOtp
+                            : null,
                         child: Container(
                           height: 52,
                           padding: EdgeInsets.symmetric(
                             horizontal: AppSpacing.md,
                           ),
                           decoration: BoxDecoration(
-                            color: _isPhoneValid && _countdownSeconds == 0
+                            color: _isPhoneValid && _countdownSeconds == 0 && !_isSendingOtp
                                 ? accent
                                 : accent.withOpacity(0.3),
                             borderRadius: AppRadius.radiusMd,
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            _countdownSeconds > 0
-                                ? '${_countdownSeconds}s'
-                                : '获取验证码',
-                            style: AppTypography.primary.caption.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          child: _isSendingOtp
+                              ? SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white.withOpacity(0.8)),
+                                  ),
+                                )
+                              : Text(
+                                  _countdownSeconds > 0
+                                      ? '${_countdownSeconds}s'
+                                      : '获取验证码',
+                                  style: AppTypography.primary.caption.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -415,14 +466,15 @@ class _RegisterPageState extends State<RegisterPage> {
                     size: EHButtonSize.lg,
                     fullWidth: true,
                     enabled: _canSubmit,
-                    isLoading: _isLoading,
+                    isLoading: _isVerifying,
                     onPressed: _onSubmit,
                   ),
                   SizedBox(height: AppSpacing.lg),
 
                   // ─── Already have account ──────────────────
+                  // 用 go 替换当前页，避免 register↔login 互相 push 堆积无法返回
                   GestureDetector(
-                    onTap: () => context.push(Routes.login),
+                    onTap: () => context.go(Routes.login),
                     child: RichText(
                       text: TextSpan(
                         style: AppTypography.primary.caption.copyWith(

@@ -245,6 +245,9 @@ func (s *ReviewService) handleReviveCheck(ctx context.Context, userID int64, req
 		if nextInterval == 0 {
 			// 永久消灭
 			s.questionRepo.MarkPermanentlyMastered(ctx, question.ID)
+			// 复活检测同样写 ReviewRecord，保证复习历史/weekly_completed 反映复活检测。
+			// REMEMBERED → 自评 MASTERED，master_count_after 保持 3（已消灭）。
+			s.createReviveReviewRecord(ctx, question, userID, req, model.RatingMastered, 3)
 			return s.applyStreakUpdate(ctx, userID, &SubmitReviewResponse{
 				QuestionID:     question.ID,
 				NewStatus:      string(model.StatusPermanentlyMastered),
@@ -254,6 +257,7 @@ func (s *ReviewService) handleReviveCheck(ctx context.Context, userID int64, req
 		}
 		nextDate := time.Now().AddDate(0, 0, nextInterval)
 		s.questionRepo.UpdateReviveSchedule(ctx, question.ID, nextInterval, nextDate)
+		s.createReviveReviewRecord(ctx, question, userID, req, model.RatingMastered, 3)
 		return s.applyStreakUpdate(ctx, userID, &SubmitReviewResponse{
 			QuestionID:     question.ID,
 			NewStatus:      string(model.StatusMastered),
@@ -264,6 +268,8 @@ func (s *ReviewService) handleReviveCheck(ctx context.Context, userID int64, req
 		// 复活失败
 		nextDate := time.Now().AddDate(0, 0, 1)
 		s.questionRepo.ResetReviewPlan(ctx, question.ID, nextDate)
+		// 复活失败 → 自评 FAILED，master_count_after 归 0（复习计划已重置）。
+		s.createReviveReviewRecord(ctx, question, userID, req, model.RatingFailed, 0)
 		return s.applyStreakUpdate(ctx, userID, &SubmitReviewResponse{
 			QuestionID:       question.ID,
 			NewStatus:        string(model.StatusReviewing),
@@ -273,6 +279,47 @@ func (s *ReviewService) handleReviveCheck(ctx context.Context, userID int64, req
 			IsReviveFailed:   true,
 			EncourageMessage: "这道题需要再巩固一下哦！加油",
 		}), nil
+	}
+}
+
+// createReviveReviewRecord 为复活检测创建一条 ReviewRecord，与正常 SubmitReview
+// 路径一致（含 review_duration_sec / self_rating / review_round / master_count_after）。
+// 复习记录写入失败不应阻断复活检测主流程（题状态已更新），仅记日志——
+// 与 streak 更新的容错策略保持一致，避免因记录写入失败回滚已生效的消灭/复活。
+func (s *ReviewService) createReviveReviewRecord(
+	ctx context.Context,
+	question *model.Question,
+	userID int64,
+	req SubmitReviewRequest,
+	rating model.SelfRating,
+	masterCountAfter int,
+) {
+	record := buildReviveReviewRecord(question, userID, req, rating, masterCountAfter)
+	if err := s.reviewRepo.Create(ctx, record); err != nil {
+		log.Printf("[WARN] create revive ReviewRecord failed for question %d: %v", question.ID, err)
+	}
+}
+
+// buildReviveReviewRecord 纯函数：构造复活检测的 ReviewRecord。
+// 抽出便于单测（无需 DB），保证字段与正常 SubmitReview 路径一致：
+//   - QuestionID / UserID / ReviewRound 取自 question（复活复习的轮次=已消灭时的轮次）
+//   - SelfRating：REMEMBERED→MASTERED，FORGOTTEN→FAILED
+//   - MasterCountAfter：REMEMBERED→3，FORGOTTEN→0
+//   - ReviewDurationSec：透传请求里的复习用时
+func buildReviveReviewRecord(
+	question *model.Question,
+	userID int64,
+	req SubmitReviewRequest,
+	rating model.SelfRating,
+	masterCountAfter int,
+) *model.ReviewRecord {
+	return &model.ReviewRecord{
+		QuestionID:        question.ID,
+		UserID:            userID,
+		ReviewRound:       question.ReviewRound,
+		SelfRating:        rating,
+		MasterCountAfter:  masterCountAfter,
+		ReviewDurationSec: req.ReviewDurationSec,
 	}
 }
 

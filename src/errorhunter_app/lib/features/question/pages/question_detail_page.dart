@@ -84,24 +84,46 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   Future<void> _saveEdits(QuestionModel question) async {
+    if (_isSaving) return;
+
+    final newOcr = _ocrController.text.isEmpty ? null : _ocrController.text;
+    final newMyAnswer =
+        _myAnswerController.text.isEmpty ? null : _myAnswerController.text;
+    final newCorrectAnswer = _correctAnswerController.text.isEmpty
+        ? null
+        : _correctAnswerController.text;
+
+    // 内容无变化时不发请求，避免无谓网络开销，也避免"内容相同→state 不变→
+    // listener 不触发→_isSaving 卡住"的边界。
+    if (newOcr == question.ocrText &&
+        newMyAnswer == question.myAnswer &&
+        newCorrectAnswer == question.correctAnswer) {
+      return;
+    }
+
     setState(() => _isSaving = true);
-    try {
-      final updated = question.copyWith(
-        ocrText: _ocrController.text.isEmpty ? null : _ocrController.text,
-        myAnswer: _myAnswerController.text.isEmpty ? null : _myAnswerController.text,
-        correctAnswer: _correctAnswerController.text.isEmpty ? null : _correctAnswerController.text,
-        updatedAt: DateTime.now(),
-      );
-      context.read<QuestionBloc>().add(UpdateQuestion(updated));
-      if (!mounted) return;
+    final updated = question.copyWith(
+      ocrText: newOcr,
+      myAnswer: newMyAnswer,
+      correctAnswer: newCorrectAnswer,
+      updatedAt: DateTime.now(),
+    );
+    // 派发更新事件；真正的成功/失败由 bloc emit 的状态驱动（见 _onStateChanged）。
+    // 之前在这里 try/catch 包 add()，但 add 同步派发不抛异常，导致"已自动保存"
+    // 总是先弹，即便后端保存失败也提示成功。
+    context.read<QuestionBloc>().add(UpdateQuestion(updated));
+  }
+
+  /// 监听 bloc 状态：保存成功 → 提示；失败 → 提示并回退编辑态。
+  void _onStateChanged(BuildContext context, QuestionState state) {
+    if (state is QuestionDetailLoaded && _isSaving) {
+      // UpdateQuestion 成功后 bloc emit QuestionDetailLoaded(updated)，
+      // 此时 state.question 已是最新数据。
+      setState(() => _isSaving = false);
       EHToast.show(context, message: '已自动保存', type: EHToastType.success);
-    } catch (e) {
-      if (!mounted) return;
-      EHToast.show(context, message: '保存失败，请重试', type: EHToastType.error);
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+    } else if (state is QuestionUpdateFailed && _isSaving) {
+      setState(() => _isSaving = false);
+      EHToast.show(context, message: state.message, type: EHToastType.error);
     }
   }
 
@@ -169,7 +191,8 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
     final isGlass = context.themeExt.isDarkBackground;
     final accentColor =
         isGlass ? const Color(0xFFFFB74D) : AppColors.brandPrimary;
-    return BlocBuilder<QuestionBloc, QuestionState>(
+    return BlocConsumer<QuestionBloc, QuestionState>(
+      listener: _onStateChanged,
       builder: (context, state) {
         if (state is QuestionDetailLoading) {
           return Scaffold(

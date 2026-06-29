@@ -50,6 +50,24 @@ class QuestionRepositoryImpl implements QuestionRepository {
       _dataSource.deleteQuestion(id);
 
   @override
+  Future<List<QuestionModel>> getRecycleBin({
+    int page = 1,
+    int pageSize = 20,
+  }) =>
+      _dataSource.getRecycleBin(page: page, pageSize: pageSize);
+
+  @override
+  Future<void> restoreQuestion(String id) =>
+      _dataSource.restoreQuestion(id);
+
+  @override
+  Future<void> permanentDeleteQuestion(String id) =>
+      _dataSource.permanentDeleteQuestion(id);
+
+  @override
+  Future<int> clearRecycleBin() => _dataSource.clearRecycleBin();
+
+  @override
   Future<OcrResult> ocrImage(String imagePath) =>
       _dataSource.ocrImage(imagePath);
 }

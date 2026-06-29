@@ -185,6 +185,9 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       icon: Icons.exit_to_app,
     );
     if (confirmed == true && mounted) {
+      // 中途退出前，提交仍处于撤销窗口内（EvaluationPending）的评价，
+      // 避免"评了但未过 4 秒就退出"造成评价静默丢失。
+      context.read<ReviewBloc>().add(const ExitReview());
       // 中途退出时，已提交的题也要反映到首页 dashboard，刷新之。
       context.read<ReportBloc>().add(const LoadDashboard());
       context.go(Routes.home);
@@ -212,6 +215,9 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       daysSinceLastMastered = state.daysSinceLastMastered;
       currentQuestion = state.currentQuestion;
       pendingRating = state.pendingRating;
+      // 回看已评题时锁定自评按钮（pendingRating 非 null 表示已评过），
+      // 与"已评不可改评"语义一致；当前题未评时仍可评。
+      evaluationLocked = pendingRating != null;
     } else if (state is EvaluationPending) {
       currentIndex = state.currentIndex;
       total = state.total;
@@ -273,6 +279,12 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                         }
                         return;
                       }
+                      // 已评价（含回看已评题/撤销窗口内）：确认并进入下一题。
+                      // 原实现此处漏发 ConfirmAndNext，左滑无法前进，只能干等
+                      // 4 秒撤销窗口超时。
+                      context
+                          .read<ReviewBloc>()
+                          .add(const ConfirmAndNext());
                     }
                   } else if (velocity > 300) {
                     // 右滑 → 回看上一题

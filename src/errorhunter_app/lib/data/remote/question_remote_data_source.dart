@@ -47,7 +47,10 @@ class QuestionRemoteDataSource {
   Future<List<QuestionModel>> searchQuestions(String keyword) async {
     final response = await _client.get<Map<String, dynamic>>(
       ApiEndpoints.questions,
-      queryParameters: {'q': keyword},
+      // 后端 ListFilter.Keyword 字段对应 query 参数 "keyword"（见
+      // question_handler.go: filter.Keyword = c.Query("keyword")）。
+      // 之前误用 'q'，后端取不到关键字 → 返回全部数据，搜索形同失效。
+      queryParameters: {'keyword': keyword},
     );
 
     final data = response.data?['data'] as Map<String, dynamic>?;
@@ -100,6 +103,48 @@ class QuestionRemoteDataSource {
   Future<void> deleteQuestion(String id) async {
     final endpoint = ApiEndpoints.withId(ApiEndpoints.questionDetail, id);
     await _client.delete(endpoint);
+  }
+
+  /// 回收站列表（已软删除的错题）
+  Future<List<QuestionModel>> getRecycleBin({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final response = await _client.get<Map<String, dynamic>>(
+      ApiEndpoints.recycleBin,
+      queryParameters: {'page': page, 'page_size': pageSize},
+    );
+
+    final data = response.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['list'] ?? data?['items']) as List<dynamic>? ?? [];
+
+    return items
+        .map((item) => QuestionModel.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 恢复错题（从回收站还原）
+  Future<void> restoreQuestion(String id) async {
+    final endpoint = ApiEndpoints.withId(ApiEndpoints.questionRestore, id);
+    await _client.post(endpoint);
+  }
+
+  /// 永久删除错题（不可恢复，同时清理 MinIO 图片）
+  Future<void> permanentDeleteQuestion(String id) async {
+    final endpoint =
+        ApiEndpoints.withId(ApiEndpoints.questionPermanentDelete, id);
+    await _client.delete(endpoint);
+  }
+
+  /// 清空回收站（需二次确认 confirm=true）
+  Future<int> clearRecycleBin() async {
+    final response = await _client.delete<Map<String, dynamic>>(
+      ApiEndpoints.recycleBinClear,
+      data: {'confirm': true},
+    );
+
+    final data = response.data?['data'] as Map<String, dynamic>?;
+    return (data?['deleted_count'] as num?)?.toInt() ?? 0;
   }
 
   /// OCR 识别图片（两步：先上传图片，再调 OCR）

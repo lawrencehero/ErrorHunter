@@ -5,7 +5,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../../data/remote/api_client.dart';
+import '../../../di/injection.dart';
+import '../../../domain/repositories/report_repository.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/gradients.dart';
@@ -21,8 +22,42 @@ import '../../auth/bloc/auth_event.dart';
 import '../../auth/bloc/auth_state.dart';
 
 /// 个人中心页 V2.0
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  /// 个人页英雄区统计：已消灭/总数/连续打卡。
+  /// 来自 /v1/reports/dashboard，加载失败降级为 0（不阻塞页面）。
+  int _eliminatedCount = 0;
+  int _totalCount = 0;
+  int _streakDays = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardStats();
+  }
+
+  /// 拉取 Dashboard 统计用于英雄区展示。
+  /// 任意异常都静默降级为 0：个人页核心是设置入口，统计仅作展示，
+  /// 不应因 Dashboard 接口失败导致整页不可用。
+  Future<void> _loadDashboardStats() async {
+    try {
+      final dashboard = await sl<ReportRepository>().getDashboard();
+      if (!mounted) return;
+      setState(() {
+        _eliminatedCount = dashboard.masteredCount;
+        _totalCount = dashboard.totalQuestions;
+        _streakDays = dashboard.streakDays;
+      });
+    } catch (_) {
+      // 降级：保持 0，不阻塞页面
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +69,6 @@ class ProfilePage extends StatelessWidget {
 
     final nickname = user?.nickname ?? '同学';
     final grade = _gradeCodeToLabel(user?.grade ?? '');
-    // TODO: 从 ReportBloc / Dashboard API 获取真实统计数据
-    const eliminatedCount = 0;
-    const totalCount = 0;
-    const streakDays = 0;
     const appVersion = 'v1.0.0';
 
     return Scaffold(
@@ -53,9 +84,9 @@ class ProfilePage extends StatelessWidget {
             _buildHeroSection(
               nickname: nickname,
               grade: grade,
-              eliminatedCount: eliminatedCount,
-              totalCount: totalCount,
-              streakDays: streakDays,
+              eliminatedCount: _eliminatedCount,
+              totalCount: _totalCount,
+              streakDays: _streakDays,
             ),
 
             SizedBox(height: AppSpacing.lg),
@@ -454,10 +485,14 @@ class ProfilePage extends StatelessWidget {
     );
     if (confirmed != true || !context.mounted) return;
 
-    // 1. 清 ApiClient 持久化的 access_token / refresh_token
-    await context.read<ApiClient>().clearTokens();
-    // 2. 清 AuthBloc 本地存储并 emit Unauthenticated
-    //    → app_router 的 redirect 会自动跳到 /login
+    // 触发 Logout 事件，由 AuthBloc 统一处理：
+    //   1. POST /auth/logout 撤销后端 redis token（需 access token 仍在本地）
+    //   2. 清本地 token/userId/nickname/grade（保留 phone 供重登预填）
+    //   3. 清 ApiClient 持久化的 access/refresh token
+    //   4. emit Unauthenticated → app_router redirect 自动跳 /login
+    //
+    // 注意：不能在此处先调 ApiClient.clearTokens()，否则 /auth/logout 会因
+    //       缺少 Authorization 头被中间件 401 拒绝，导致后端 token 残留。
     context.read<AuthBloc>().add(Logout());
   }
 }

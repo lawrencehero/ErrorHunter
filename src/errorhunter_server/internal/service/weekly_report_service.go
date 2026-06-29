@@ -170,18 +170,34 @@ func (s *WeeklyReportService) GenerateWeeklyReport(ctx context.Context, userID i
 		weakJSON = model.JSONB(b)
 	}
 
-	// 7. PrevWeekNew / PrevWeekMastered：取上一周周报 row 的对应字段；没有则 nil
+	// 7. PrevWeekNew / PrevWeekMastered / PrevWeekReviewCount / PrevWeekAccuracy：
+	//    取上一周周报 row 的对应字段；没有则 nil
 	prevWeekStart := weekStart.AddDate(0, 0, -7)
-	var prevWeekNew, prevWeekMastered *int
+	var prevWeekNew, prevWeekMastered, prevWeekReviewCount *int
+	var prevWeekAccuracy *float64
 	if prev, pErr := s.reportRepo.FindByUserAndWeek(ctx, userID, prevWeekStart); pErr == nil && prev != nil {
 		n := prev.NewQuestions
 		m := prev.MasteredQuestions
+		rc := prev.ReviewCount
+		ra := prev.ReviewAccuracy
 		prevWeekNew = &n
 		prevWeekMastered = &m
+		prevWeekReviewCount = &rc
+		prevWeekAccuracy = &ra
 	} else if pErr != nil && !errors.Is(pErr, gorm.ErrRecordNotFound) {
 		log.Printf("weekly_report: 查询上周周报失败 user=%d week=%v: %v", userID, prevWeekStart, pErr)
 		// 不阻断本周生成，prev 字段保持 nil
 	}
+
+	// 8. Achievements：基于本周统计生成成就文案列表（JSONB []string）。
+	streakDays := 0
+	if sd, sErr := s.getReviewStreakInWeek(ctx, userID, weekStart, weekEnd); sErr == nil {
+		streakDays = sd
+	} else if sErr != nil {
+		log.Printf("weekly_report: 统计本周连续打卡失败 user=%d week=%v: %v", userID, weekStart, sErr)
+		// 不阻断生成，按 streak=0 处理
+	}
+	achieveJSON := buildAchievementsJSONB(int(newQuestions), int(masteredQuestions), int(reviewCount), reviewAccuracy, streakDays)
 
 	report := &model.WeeklyReport{
 		UserID:            userID,
@@ -192,8 +208,11 @@ func (s *WeeklyReportService) GenerateWeeklyReport(ctx context.Context, userID i
 		MasteredQuestions: int(masteredQuestions),
 		ReviewCount:       int(reviewCount),
 		ReviewAccuracy:    reviewAccuracy,
-		PrevWeekNew:       prevWeekNew,
-		PrevWeekMastered:  prevWeekMastered,
+		PrevWeekNew:               prevWeekNew,
+		PrevWeekMastered:          prevWeekMastered,
+		PrevWeekReviewCount:       prevWeekReviewCount,
+		PrevWeekAccuracy:          prevWeekAccuracy,
+		Achievements:              achieveJSON,
 		TopErrorCategory:           topErrCat,
 		TopErrorCategoryPercentage: topErrCatPct,
 		WeakKnowledgeTop:           weakJSON,
@@ -238,6 +257,78 @@ func normalizeToMonday(t time.Time) time.Time {
 	}
 	monday := t.AddDate(0, 0, -(weekday - 1))
 	return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, shanghaiLoc)
+}
+
+// getReviewStreakInWeek 统计本周（weekStart..weekEnd，半开区间）内连续打卡天数。
+// 「打卡」= 当天至少有 1 条 review_record。从本周周一往后连续计数，遇到第一个无记录的
+// 日子即停止（不要求打到周日）。空周返回 0。
+func (s *WeeklyReportService) getReviewStreakInWeek(ctx context.Context, userID int64, weekStart, weekEnd time.Time) (int, error) {
+	var days []time.Time
+	if err := s.db.WithContext(ctx).
+		Model(&model.ReviewRecord{}).
+		Select("DISTINCT DATE(reviewed_at) AS d").
+		Where("user_id = ? AND reviewed_at >= ? AND reviewed_at < ?", userID, weekStart, weekEnd).
+		Order("d ASC").
+		Scan(&days).Error; err != nil {
+		return 0, err
+	}
+	if len(days) == 0 {
+		return 0, nil
+	}
+	// 用 set 加速查找
+	have := make(map[string]bool, len(days))
+	for _, d := range days {
+		// days 来自 DATE(reviewed_at)，Postgres 返回 time.Time（00:00 UTC），
+		// 这里统一取日期部分字符串（按上海时区）做 key。
+		have[d.In(shanghaiLoc).Format("2006-01-02")] = true
+	}
+	streak := 0
+	for i := 0; i < 7; i++ {
+		day := weekStart.AddDate(0, 0, i).In(shanghaiLoc).Format("2006-01-02")
+		if have[day] {
+			streak++
+		} else {
+			break
+		}
+	}
+	return streak, nil
+}
+
+// buildAchievementsJSONB 基于本周统计生成成就文案列表，落库为 JSONB []string。
+//
+// 成就规则（自主定义，参考优秀学习 App）：
+//  1. 连续打卡 ≥5 天      → "连续打卡达人"（坚持复习，养成习惯）
+//  2. 本周消灭 ≥10 题     → "消灭能手"（mastered_questions 达标）
+//  3. 本周正确率 ≥75%     → "高正确率"（review_accuracy 达标，且至少有 1 次复习）
+//  4. 本周新增 ≥5 题      → "勤勉录入"（new_questions 达标）
+//  5. 本周复习 ≥20 次     → "复习达人"（review_count 达标）
+//  6. 全勤复习 7 天       → "全勤王者"（连续打卡 = 7）
+//
+// 规则独立判定，可叠加多条。无任何达标则返回空数组 []。
+func buildAchievementsJSONB(newQuestions, masteredQuestions, reviewCount int, reviewAccuracy float64, streakDays int) model.JSONB {
+	achievements := make([]string, 0, 6)
+	if streakDays >= 7 {
+		achievements = append(achievements, "全勤王者")
+	} else if streakDays >= 5 {
+		achievements = append(achievements, "连续打卡达人")
+	}
+	if masteredQuestions >= 10 {
+		achievements = append(achievements, "消灭能手")
+	}
+	if reviewCount > 0 && reviewAccuracy >= 75.0 {
+		achievements = append(achievements, "高正确率")
+	}
+	if newQuestions >= 5 {
+		achievements = append(achievements, "勤勉录入")
+	}
+	if reviewCount >= 20 {
+		achievements = append(achievements, "复习达人")
+	}
+	if len(achievements) == 0 {
+		return model.JSONB("[]")
+	}
+	b, _ := json.Marshal(achievements)
+	return model.JSONB(b)
 }
 
 // LastCompletedWeekStart 返回"最近一个已结束完整周"的周一 00:00（上海时区）。

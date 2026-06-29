@@ -104,7 +104,7 @@ func TestMain(m *testing.M) {
 	// 初始化 Handler
 	testAuthHandler = handler.NewAuthHandler(authService)
 	testQHandler = handler.NewQuestionHandler(questionService)
-	testRHandler = handler.NewReviewHandler(reviewService)
+	testRHandler = handler.NewReviewHandler(reviewService, userRepo)
 	testRptHandler = handler.NewReportHandler(reportRepo, userRepo)
 	testUserHandler = handler.NewUserHandler(userRepo)
 
@@ -187,6 +187,9 @@ func buildTestRouter() *gin.Engine {
 			users := authenticated.Group("/users")
 			{
 				users.GET("/me", testUserHandler.GetMe)
+				users.GET("/me/settings", testUserHandler.GetSettings)
+				users.PUT("/me/settings", testUserHandler.UpdateSettings)
+				users.POST("/me/deactivate", testUserHandler.Deactivate)
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
@@ -160,6 +161,11 @@ type Question struct {
 	// omitempty 保证未赋值(0)时不输出，前端仍可回退默认 5。
 	TotalReviewRounds     int             `gorm:"-" json:"total_review_rounds,omitempty"`
 
+	// ReviewRecords 关联的最近复习记录（仅 GetByID 详情接口填充，倒序限 N 条）。
+	// 非持久化：gorm:"-" 不影响 DB 读写；列表/复习队列不填充以避免 N+1。
+	// omitempty 保证未填充(nil)时不输出，前端回退空复习历史。
+	ReviewRecords []ReviewRecord `gorm:"-" json:"review_records,omitempty"`
+
 	// Associations
 	KnowledgePoints []KnowledgePoint `gorm:"many2many:question_knowledge;" json:"knowledge_points,omitempty"`
 }
@@ -194,6 +200,48 @@ type KnowledgePoint struct {
 
 func (KnowledgePoint) TableName() string { return "knowledge_points" }
 
+// knowledgePointJSON 是 KnowledgePoint 序列化到 JSON 响应时使用的 DTO，
+// 与 /v1/knowledge-points 列表接口（knowledgePointResponse）保持一致：
+// 从 keywords JSONB 解析出 subject / parent_id(领域字符串) / is_recommended，
+// 保证错题详情/列表/复习队列里关联的知识点与知识点列表接口返回结构一致。
+//
+// 前端 KnowledgePoint.fromJson 读取 id/name/subject/parent_id/is_recommended，
+// 历史上详情接口直接序列化 model 导致这几个字段缺失（回退默认值），
+// 推荐标记与学段丢失。此 MarshalJSON 统一两处输出结构。
+type knowledgePointJSON struct {
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	Subject       string `json:"subject"`
+	ParentID      string `json:"parent_id,omitempty"` // 领域：num/geo/stat/custom
+	IsRecommended bool   `json:"is_recommended"`
+}
+
+// MarshalJSON 把 KnowledgePoint 序列化为与知识点列表接口一致的 DTO 形状。
+// keywords 为空或解析失败时回退：subject="数学"、is_recommended=false、parent_id 省略。
+func (kp KnowledgePoint) MarshalJSON() ([]byte, error) {
+	dto := knowledgePointJSON{
+		ID:   kp.ID,
+		Name: kp.Name,
+		// 默认学段数学；keywords 里有则覆盖
+		Subject: "数学",
+	}
+	if !kp.Keywords.IsNull() {
+		var kw map[string]interface{}
+		if err := json.Unmarshal(kp.Keywords, &kw); err == nil {
+			if v, ok := kw["subject"].(string); ok && v != "" {
+				dto.Subject = v
+			}
+			if v, ok := kw["domain"].(string); ok && v != "" {
+				dto.ParentID = v
+			}
+			if v, ok := kw["is_recommended"].(bool); ok {
+				dto.IsRecommended = v
+			}
+		}
+	}
+	return json.Marshal(dto)
+}
+
 // WeeklyReport 周报表
 type WeeklyReport struct {
 	ID                          int64          `gorm:"primaryKey;autoIncrement" json:"id"`
@@ -207,6 +255,9 @@ type WeeklyReport struct {
 	ReviewAccuracy              float64        `gorm:"type:decimal(5,2);not null;default:0.00" json:"review_accuracy"`
 	PrevWeekNew                 *int           `json:"prev_week_new,omitempty"`
 	PrevWeekMastered            *int           `json:"prev_week_mastered,omitempty"`
+	PrevWeekReviewCount         *int           `json:"prev_week_review_count,omitempty"`
+	PrevWeekAccuracy            *float64       `json:"prev_week_accuracy,omitempty"`
+	Achievements                JSONB          `gorm:"type:jsonb;default:'[]'" json:"achievements"`
 	TopErrorCategory            *ErrorCategory `gorm:"type:error_category_enum" json:"top_error_category,omitempty"`
 	TopErrorCategoryPercentage  float64        `gorm:"type:decimal(5,2);not null;default:0.00" json:"top_error_category_percentage,omitempty"`
 	WeakKnowledgeTop            JSONB          `gorm:"type:jsonb" json:"weak_knowledge_top,omitempty"`

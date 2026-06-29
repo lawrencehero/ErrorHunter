@@ -350,6 +350,51 @@ func (s *AuthService) Logout(ctx context.Context, userID int64, accessToken stri
 	return nil
 }
 
+// VerifyDeactivateCode 仅校验注销场景下的短信验证码，不做登录/注册副作用。
+//
+// 注销是高风险操作（支付宝/微信式体验：先发码→校验码→再注销），
+// 复用 VerifyOTP 内部的阿里云校验逻辑，但不创建/登录用户、不签发 token。
+// 校验通过返回 nil，失败返回 EVerifyCodeInvalid。
+// 白名单号码（otpConfig.BypassPhones）任意码可通过，便于测试。
+func (s *AuthService) VerifyDeactivateCode(ctx context.Context, phone, code string) error {
+	if s.isBypassPhone(phone) {
+		log.Printf("[INFO] OTP bypass (whitelist) for deactivate %s, any code accepted", phone)
+		return nil
+	}
+	valid, err := s.smsProvider.VerifyCode(ctx, phone, code)
+	if err != nil {
+		log.Printf("[WARN] SMS verify failed (deactivate) for %s: %v", phone, err)
+		return errcode.EInternalServer
+	}
+	if !valid {
+		return errcode.EVerifyCodeInvalid
+	}
+	return nil
+}
+
+// RevokeTokens 撤销指定用户的 refresh token 并将 access token 加入黑名单。
+// 注销账号时调用，确保注销后该用户已签发的 token 立即失效。
+func (s *AuthService) RevokeTokens(ctx context.Context, userID int64, accessToken string) {
+	refreshKey := fmt.Sprintf("token:refresh:%d", userID)
+	s.redis.Del(ctx, refreshKey)
+
+	if accessToken == "" {
+		return
+	}
+	claims, err := s.jwtMgr.ParseAccessToken(accessToken)
+	if err != nil || claims.ExpiresAt == nil {
+		return
+	}
+	remaining := time.Until(claims.ExpiresAt.Time)
+	if remaining <= 0 {
+		return
+	}
+	blacklistKey := fmt.Sprintf("token:blacklist:%d:%d", claims.UserID, claims.ExpiresAt.Unix())
+	if err := s.redis.Set(ctx, blacklistKey, 1, remaining).Err(); err != nil {
+		log.Printf("[WARN] Failed to blacklist access token for user %d: %v", userID, err)
+	}
+}
+
 func toUserInfo(user *model.User) *UserInfo {
 	info := &UserInfo{
 		ID:                user.ID,

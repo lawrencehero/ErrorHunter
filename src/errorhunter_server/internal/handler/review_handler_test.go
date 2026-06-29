@@ -21,14 +21,14 @@ func TestGetQueue_Unauthorized(t *testing.T) {
 	assertErrorCode(t, w, errcode.ErrUnauthorized)
 }
 
-func TestGetQueue_Authorized_NilService(t *testing.T) {
-	// 已认证但service为nil → panic
+func TestGetQueue_Authorized_NilDeps(t *testing.T) {
+	// 已认证但 userRepo/service 均为 nil → panic（先在 userRepo.FindByID 处）
 	h := &ReviewHandler{}
 	tc := newTestCtx().withUser(1).getRoute("/queue", h.GetQueue)
 
 	defer func() {
 		r := recover()
-		assert.NotNil(t, r, "nil service应导致panic")
+		assert.NotNil(t, r, "nil 依赖应导致panic")
 	}()
 
 	tc.doRequest("GET", "/queue", nil, nil)
@@ -155,7 +155,8 @@ func TestGetHistory_CustomPagination(t *testing.T) {
 // ===== ReviewHandler 构造函数测试 =====
 
 func TestNewReviewHandler(t *testing.T) {
-	h := NewReviewHandler(nil)
+	h := NewReviewHandler(nil, nil)
 	assert.NotNil(t, h)
 	assert.Nil(t, h.reviewService)
+	assert.Nil(t, h.userRepo)
 }

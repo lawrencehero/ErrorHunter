@@ -48,11 +48,15 @@ class ReviewRemoteDataSource {
   ///
   /// [selfRating] 为已映射到后端的字符串（MASTERED/PARTIAL/FAILED），
   /// 映射逻辑由调用方（ReviewBloc._mapToBackendRating）负责。
+  /// [reviveResult] 仅复活检测题需要（REMEMBERED/FORGOTTEN）：
+  /// 后端 handleReviveCheck 强制校验该字段，缺失返回 EReviveResultRequired，
+  /// 因此复活检测题必须传入，否则提交必然 400。
   Future<void> submitReviewResult({
     required String questionId,
     required String selfRating,
     int? reviewDurationSec,
     bool isReviveCheck = false,
+    String? reviveResult,
   }) async {
     await _client.post(
       ApiEndpoints.reviewResult,
@@ -62,6 +66,10 @@ class ReviewRemoteDataSource {
         if (reviewDurationSec != null)
           'review_duration_sec': reviewDurationSec,
         'is_revive_check': isReviveCheck,
+        // 复活检测题必须带 revive_result，后端据此分支处理；
+        // 普通复习题不带，避免无意义字段。
+        if (isReviveCheck && reviveResult != null)
+          'revive_result': reviveResult,
       },
     );
   }

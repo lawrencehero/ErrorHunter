@@ -113,12 +113,16 @@ final GoRouter appRouter = GoRouter(
     }
 
     // 当前处于 auth 流程的页面（不需要强制重定向）
+    // /legal/* 也允许未登录访问：注册/登录页可点开《用户协议》《隐私政策》
     final isAtAuthFlow = loc == Routes.splash
         || loc == Routes.onboarding
         || loc == Routes.login
-        || loc == Routes.register;
+        || loc == Routes.register
+        || loc.startsWith('/legal/');
 
     // 已登录但停留在 auth 流程 → 跳到首页
+    // 注意：splash 不在此列——splash 有自己的最短品牌展示(800ms)+BlocListener 跳转逻辑，
+    // 这里若重定向会破坏品牌动画。splash 卡住的极端情况由其 5s 超时兜底。
     if (authState is Authenticated &&
         (loc == Routes.login || loc == Routes.register || loc == Routes.onboarding)) {
       return Routes.home;

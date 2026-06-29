@@ -5,7 +5,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../../router/app_router.dart';
+import '../../../data/remote/user_remote_data_source.dart';
+import '../../../di/injection.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
@@ -18,6 +19,7 @@ import '../../../widgets/common/cards/base_card.dart';
 import '../../../widgets/common/dialogs/toast.dart';
 import '../../../widgets/common/divider.dart';
 import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/bloc/auth_event.dart';
 import '../../auth/bloc/auth_state.dart';
 
 /// 注销步骤
@@ -36,11 +38,40 @@ class _DeactivatePageState extends State<DeactivatePage> {
   bool _isProcessing = false;
 
   // Step 2 验证字段
-  final _phoneController = TextEditingController(text: '138****8888');
+  final _phoneController = TextEditingController();
   final _codeController = TextEditingController();
-  bool _codeSent = false;
   int _countdownSeconds = 0;
   Timer? _countdownTimer;
+
+  /// 当前账号真实手机号（11位），用于发码/注销接口。
+  /// 从 AuthBloc.state 取（verifyOtp 时存入，为用户输入的原始手机号）。
+  String _realPhone = '';
+
+  /// 注销接口数据源
+  UserRemoteDataSource get _userApi => sl<UserRemoteDataSource>();
+
+  @override
+  void initState() {
+    super.initState();
+    _initPhoneFromAuth();
+  }
+
+  /// 从 AuthBloc 读取当前账号手机号，预填脱敏号到展示框，保留原始号供接口调用。
+  void _initPhoneFromAuth() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is Authenticated) {
+      _realPhone = authState.user.phone;
+      _phoneController.text = _maskPhone(_realPhone);
+    }
+  }
+
+  /// 手机号脱敏：13800138000 → 138****8000
+  String _maskPhone(String phone) {
+    if (phone.length == 11) {
+      return '${phone.substring(0, 3)}****${phone.substring(7)}';
+    }
+    return phone;
+  }
 
   @override
   void dispose() {
@@ -429,34 +460,48 @@ class _DeactivatePageState extends State<DeactivatePage> {
                   ),
                   SizedBox(width: AppSpacing.sm),
                   GestureDetector(
-                    onTap: _countdownSeconds > 0 ? null : _sendCode,
+                    onTap: (_countdownSeconds > 0 || _isProcessing)
+                        ? null
+                        : _sendCode,
                     child: Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: AppSpacing.md,
                         vertical: AppSpacing.sm + 4,
                       ),
                       decoration: BoxDecoration(
-                        color: _countdownSeconds > 0
+                        color: (_countdownSeconds > 0 || _isProcessing)
                             ? (isGlass
                                 ? Colors.white.withOpacity(0.08)
                                 : AppColors.textTertiary.withOpacity(0.2))
                             : accent.withOpacity(isGlass ? 0.22 : 0.1),
                         borderRadius: AppRadius.radiusMd,
                         border: Border.all(
-                          color: _countdownSeconds > 0
+                          color: (_countdownSeconds > 0 || _isProcessing)
                               ? Colors.transparent
                               : accent.withOpacity(0.5),
                         ),
                       ),
-                      child: Text(
-                        _countdownSeconds > 0
-                            ? '重新发送 (${_countdownSeconds}s)'
-                            : '获取验证码',
-                        style: AppTypography.primary.caption.copyWith(
-                          color: _countdownSeconds > 0 ? tc.tertiary : accent,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      child: _isProcessing
+                          ? SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(accent),
+                              ),
+                            )
+                          : Text(
+                              _countdownSeconds > 0
+                                  ? '重新发送 (${_countdownSeconds}s)'
+                                  : '获取验证码',
+                              style: AppTypography.primary.caption.copyWith(
+                                color: _countdownSeconds > 0
+                                    ? tc.tertiary
+                                    : accent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -476,25 +521,42 @@ class _DeactivatePageState extends State<DeactivatePage> {
     );
   }
 
-  void _sendCode() {
-    // TODO: 调用发送验证码API
-    setState(() {
-      _codeSent = true;
-      _countdownSeconds = 60;
-    });
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
+  Future<void> _sendCode() async {
+    if (_realPhone.isEmpty) {
+      EHToast.show(context,
+          message: '未获取到账号手机号，请重新登录后再试', type: EHToastType.warning);
+      return;
+    }
+    if (_countdownSeconds > 0) return;
+
+    setState(() => _isProcessing = true);
+    try {
+      await _userApi.sendDeactivateOtp(_realPhone);
+      if (!mounted) return;
       setState(() {
-        _countdownSeconds--;
-        if (_countdownSeconds <= 0) timer.cancel();
+        _countdownSeconds = 60;
       });
-    });
-    EHToast.show(context,
-        message: '验证码已发送', type: EHToastType.success);
+      _countdownTimer?.cancel();
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          _countdownSeconds--;
+          if (_countdownSeconds <= 0) timer.cancel();
+        });
+      });
+      EHToast.show(context,
+          message: '验证码已发送', type: EHToastType.success);
+    } catch (e) {
+      if (!mounted) return;
+      EHToast.show(context,
+          message: _friendlyError(e, '验证码发送失败，请稍后重试'),
+          type: EHToastType.error);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
 
   void _handleVerify() {
@@ -503,15 +565,9 @@ class _DeactivatePageState extends State<DeactivatePage> {
           message: '请输入6位验证码', type: EHToastType.warning);
       return;
     }
-    setState(() => _isProcessing = true);
-    // TODO: 调用验证API
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
-      setState(() {
-        _isProcessing = false;
-        _currentStep = _DeactivateStep.confirmation;
-      });
-    });
+    // 真实验证由后端 /users/me/deactivate 在最终确认时完成（校验码+手机号+软删除一体）。
+    // 此处仅做长度校验后进入确认步骤，避免重复发码/重复校验。
+    setState(() => _currentStep = _DeactivateStep.confirmation);
   }
 
   // ─── Step 3: 确认注销 ────────────────────────────────
@@ -572,15 +628,54 @@ class _DeactivatePageState extends State<DeactivatePage> {
     return '您即将注销账号「$nickname」\n此操作不可逆，请再次确认';
   }
 
-  void _handleFinalDeactivate() {
-    setState(() => _isProcessing = true);
-    // TODO: 调用注销API
-    Future.delayed(const Duration(seconds: 1), () {
-      if (!mounted) return;
-      setState(() => _isProcessing = false);
+  Future<void> _handleFinalDeactivate() async {
+    if (_realPhone.isEmpty || _codeController.text.length != 6) {
       EHToast.show(context,
-          message: '注销申请已提交，7天后生效', type: EHToastType.info);
-      context.go(Routes.login);
-    });
+          message: '验证码无效，请返回上一步重新获取', type: EHToastType.warning);
+      return;
+    }
+    setState(() => _isProcessing = true);
+    try {
+      await _userApi.deactivate(
+        phone: _realPhone,
+        code: _codeController.text,
+      );
+      if (!mounted) return;
+      EHToast.show(context,
+          message: '账号已注销', type: EHToastType.info);
+      // 注销成功：后端已撤销 token，前端清本地态 + 跳登录页。
+      // 复用 AuthBloc.Logout 事件清本地存储（保留 phone 供重登预填）。
+      // Logout 里的 /auth/logout 会因 token 已被后端撤销而 401，被 try/catch 吞掉，无副作用。
+      // 触发 Logout → emit Unauthenticated → app_router 的 refreshListenable
+      // 自动重定向到 /login（无需手动 context.go，避免 Authenticated 态下的 /home 闪烁）。
+      context.read<AuthBloc>().add(Logout());
+    } catch (e) {
+      if (!mounted) return;
+      EHToast.show(context,
+          message: _friendlyError(e, '注销失败，请稍后重试'),
+          type: EHToastType.error);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  /// 把后端/网络错误转成对小学生友好的中文文案。
+  String _friendlyError(Object e, String fallback) {
+    final msg = e.toString();
+    if (msg.contains('验证码') || msg.contains('10002')) {
+      return '验证码错误或已过期';
+    } else if (msg.contains('频繁') || msg.contains('上限') || msg.contains('10007')) {
+      return '操作过于频繁，请稍后再试';
+    } else if (msg.contains('手机号') && msg.contains('不一致')) {
+      return '手机号与当前账号不一致';
+    } else if (msg.contains('已注销') || msg.contains('10014')) {
+      return '该账号已注销';
+    } else if (msg.contains('SocketException') ||
+        msg.contains('TimeoutException') ||
+        msg.contains('Failed host') ||
+        msg.contains('Network')) {
+      return '网络连接失败，请检查网络后重试';
+    }
+    return fallback;
   }
 }

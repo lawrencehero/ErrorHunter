@@ -8,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../di/injection.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/radius.dart';
@@ -34,11 +36,36 @@ class _LoginPageState extends State<LoginPage> {
   final _otpFirstFocusNode = FocusNode();
   String _phoneDigits = '';
   String _otpCode = '';
-  bool _isLoading = false;
+  /// 正在提交登录（验证 OTP）——仅登录按钮转圈
+  bool _isVerifying = false;
+  /// 正在发送验证码——仅"获取验证码"按钮转圈，登录按钮不转
+  bool _isSendingOtp = false;
 
   // OTP 倒计时
   Timer? _countdownTimer;
   int _countdownSeconds = 0;
+
+  /// 登录页手机号预填 key（与 AuthBloc._StorageKeys.phone 保持一致）
+  static const _kPhoneKey = 'auth_phone';
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillPhone();
+  }
+
+  /// 预填上次登录的手机号（登出时保留 phone，支付宝式体验）。
+  /// SharedPreferences 在 DI 中已注册为单例，直接读取。
+  void _prefillPhone() {
+    final prefs = sl<SharedPreferences>();
+    final phone = prefs.getString(_kPhoneKey) ?? '';
+    if (phone.length == 11) {
+      // 与 EHPhoneInput 的格式化规则保持一致：138 0000 0000
+      final formatted = '${phone.substring(0, 3)} ${phone.substring(3, 7)} ${phone.substring(7)}';
+      _phoneController.text = formatted;
+      _phoneDigits = phone;
+    }
+  }
 
   @override
   void dispose() {
@@ -55,6 +82,9 @@ class _LoginPageState extends State<LoginPage> {
   void _onSendOtp() {
     if (!_isPhoneValid) return;
     if (_countdownSeconds > 0) return;
+    // 防止重复点击触发多次发送验证码（多发短信）
+    if (_isVerifying || _isSendingOtp) return;
+    setState(() => _isSendingOtp = true);
     context.read<AuthBloc>().add(SendOtp(_phoneDigits));
   }
 
@@ -75,6 +105,8 @@ class _LoginPageState extends State<LoginPage> {
 
   void _onSubmit() {
     if (!_canSubmit) return;
+    if (_isVerifying || _isSendingOtp) return;
+    setState(() => _isVerifying = true);
     context.read<AuthBloc>().add(VerifyOtp(
           phone: _phoneDigits,
           otp: _otpCode,
@@ -102,7 +134,15 @@ class _LoginPageState extends State<LoginPage> {
             icon: Icons.error_outline_rounded,
           );
         }
-        _isLoading = state is AuthLoading;
+        // 离开 AuthLoading 后复位各自的 loading 标志（OtpSent/AuthError/Authenticated）
+        if (state is! AuthLoading) {
+          if (_isSendingOtp || _isVerifying) {
+            setState(() {
+              _isSendingOtp = false;
+              _isVerifying = false;
+            });
+          }
+        }
       },
       builder: (context, state) {
         final tc = context.textColors;
@@ -222,7 +262,9 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         SizedBox(width: AppSpacing.md),
                         GestureDetector(
-                          onTap: _isPhoneValid && _countdownSeconds == 0
+                          onTap: _isPhoneValid &&
+                                  _countdownSeconds == 0 &&
+                                  !_isSendingOtp
                               ? _onSendOtp
                               : null,
                           child: Container(
@@ -231,21 +273,34 @@ class _LoginPageState extends State<LoginPage> {
                               horizontal: AppSpacing.md,
                             ),
                             decoration: BoxDecoration(
-                              color: _isPhoneValid && _countdownSeconds == 0
+                              color: _isPhoneValid &&
+                                      _countdownSeconds == 0 &&
+                                      !_isSendingOtp
                                   ? accent
                                   : accent.withOpacity(0.3),
                               borderRadius: AppRadius.radiusMd,
                             ),
                             alignment: Alignment.center,
-                            child: Text(
-                              _countdownSeconds > 0
-                                  ? '${_countdownSeconds}s'
-                                  : '获取验证码',
-                              style: AppTypography.primary.caption.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            child: _isSendingOtp
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white.withOpacity(0.8)),
+                                    ),
+                                  )
+                                : Text(
+                                    _countdownSeconds > 0
+                                        ? '${_countdownSeconds}s'
+                                        : '获取验证码',
+                                    style:
+                                        AppTypography.primary.caption.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],
@@ -258,14 +313,15 @@ class _LoginPageState extends State<LoginPage> {
                       size: EHButtonSize.lg,
                       fullWidth: true,
                       enabled: _canSubmit,
-                      isLoading: _isLoading,
+                      isLoading: _isVerifying,
                       onPressed: _onSubmit,
                     ),
                     SizedBox(height: AppSpacing.lg),
 
                     // ─── Switch to Register ────────────────────
+                    // 用 go 替换当前页，避免 login↔register 互相 push 堆积无法返回
                     GestureDetector(
-                      onTap: () => context.push(Routes.register),
+                      onTap: () => context.go(Routes.register),
                       child: RichText(
                         text: TextSpan(
                           style: AppTypography.primary.caption.copyWith(

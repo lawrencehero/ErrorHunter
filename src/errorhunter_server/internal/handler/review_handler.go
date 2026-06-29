@@ -5,6 +5,7 @@ import (
 
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
+	"github.com/errorhunter/errorhunter-server/internal/repository"
 	"github.com/errorhunter/errorhunter-server/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -12,10 +13,11 @@ import (
 // ReviewHandler 复习处理器
 type ReviewHandler struct {
 	reviewService *service.ReviewService
+	userRepo      *repository.UserRepository
 }
 
-func NewReviewHandler(reviewService *service.ReviewService) *ReviewHandler {
-	return &ReviewHandler{reviewService: reviewService}
+func NewReviewHandler(reviewService *service.ReviewService, userRepo *repository.UserRepository) *ReviewHandler {
+	return &ReviewHandler{reviewService: reviewService, userRepo: userRepo}
 }
 
 // GetQueue 获取今日复习队列
@@ -27,8 +29,16 @@ func (h *ReviewHandler) GetQueue(c *gin.Context) {
 		return
 	}
 
-	// 从用户设置获取每日上限，默认20
-	dailyLimit := 20 // TODO: 从用户配置获取
+	// 从用户设置读取每日复习上限（users.daily_review_limit，10-30）。
+	// 原实现硬编码 20，导致用户在「我的-设置」里改了上限后复习队列不生效，
+	// 且与 dashboard 的 overflow_count（用 user.DailyReviewLimit 算）口径不一致。
+	// 取不到用户（已软删等）时回退 20，保持原有兜底行为不回归。
+	dailyLimit := 20
+	if user, err := h.userRepo.FindByID(c.Request.Context(), userID); err == nil {
+		if user.DailyReviewLimit >= 10 && user.DailyReviewLimit <= 30 {
+			dailyLimit = user.DailyReviewLimit
+		}
+	}
 
 	queue, err := h.reviewService.GetReviewQueue(c.Request.Context(), userID, dailyLimit)
 	if err != nil {
@@ -82,6 +92,16 @@ func (h *ReviewHandler) GetHistory(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	// 越界保护：page<1 → offset 负数；pageSize<=0 → LIMIT 异常。
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
 
 	records, total, err := h.reviewService.GetReviewHistory(c.Request.Context(), userID, page, pageSize)
 	if err != nil {
