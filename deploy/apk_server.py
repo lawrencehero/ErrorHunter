@@ -29,6 +29,19 @@ PUBSPEC_PATH = PROJECT_ROOT / "src" / "errorhunter_app" / "pubspec.yaml"
 DEFAULT_PORT = 8080
 QR_OUTPUT = PROJECT_ROOT / "deploy" / "apk-download-qr.png"
 
+# 公网部署覆盖项（环境变量）：
+#   APK_APK_PATH   — APK 文件绝对路径
+#   APK_PUBSPEC_PATH — pubspec.yaml 路径（用于读版本号；缺失则回退默认）
+#   APK_PORT       — 监听端口（默认 8080；公网部署建议避开后端 8080，用 8081）
+#   PUBLIC_URL     — 公网下载根 URL（如 http://47.108.190.116:8081）；设置后二维码与
+#                    落地页用它，否则自动探测本机局域网 IP
+#   APK_QR_OUTPUT  — 二维码图片输出路径
+APK_PATH = Path(os.environ.get("APK_APK_PATH") or str(APK_PATH))
+PUBSPEC_PATH = Path(os.environ.get("APK_PUBSPEC_PATH") or str(PUBSPEC_PATH))
+DEFAULT_PORT = int(os.environ.get("APK_PORT") or DEFAULT_PORT)
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
+QR_OUTPUT = Path(os.environ.get("APK_QR_OUTPUT") or str(QR_OUTPUT))
+
 
 def get_app_version():
     """从 pubspec.yaml 读取版本号（version: X.Y.Z+N → 返回 X.Y.Z）"""
@@ -200,8 +213,11 @@ def main():
         sys.exit(1)
 
     apk_size_mb = APK_PATH.stat().st_size / (1024 * 1024)
-    local_ip = get_local_ip()
-    download_url = f"http://{local_ip}:{port}/"
+    if PUBLIC_URL:
+        download_url = PUBLIC_URL + "/"
+    else:
+        local_ip = get_local_ip()
+        download_url = f"http://{local_ip}:{port}/"
 
     # 生成二维码图片
     qr_path = generate_qr(download_url, QR_OUTPUT)
@@ -223,16 +239,25 @@ def main():
     print_qr_terminal(download_url)
 
     sys.stdout.write("\n")
-    sys.stdout.write("  ⚠️  确保手机和电脑在同一 WiFi 网络\n")
+    if PUBLIC_URL:
+        sys.stdout.write("  🌍 公网模式：手机任意网络扫码即可下载（需安全组放行该端口）\n")
+    else:
+        sys.stdout.write("  ⚠️  确保手机和电脑在同一 WiFi 网络\n")
     sys.stdout.write("  🛑 按 Ctrl+C 停止服务器\n")
     sys.stdout.write("=" * 56 + "\n\n")
     sys.stdout.flush()
 
     # 启动 HTTP 服务器
+    # 用 ThreadingTCPServer：每个请求独立线程，避免单个慢/卡死连接阻塞整个下载服务
+    # （单线程 TCPServer 下，一个不正常关闭的连接会让服务彻底无响应，容器仍 Up 但 HTTP 超时）
     handler = lambda *a, **kw: APKHandler(*a, apk_path=str(APK_PATH), **kw)
 
+    class _ThreadedServer(socketserver.ThreadingTCPServer):
+        daemon_threads = True  # 主进程退出时线程立即结束，不阻塞关闭
+        allow_reuse_address = True
+
     try:
-        with socketserver.TCPServer(("0.0.0.0", port), handler) as httpd:
+        with _ThreadedServer(("0.0.0.0", port), handler) as httpd:
             httpd.serve_forever()
     except KeyboardInterrupt:
         sys.stdout.write("\n\n  ✅ 服务器已停止\n\n")

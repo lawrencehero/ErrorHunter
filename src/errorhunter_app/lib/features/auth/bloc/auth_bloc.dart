@@ -36,6 +36,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<CheckAuthStatus>(_onCheckAuthStatus);
     on<SendOtp>(_onSendOtp);
     on<VerifyOtp>(_onVerifyOtp);
+    on<CompleteRegistration>(_onCompleteRegistration);
     on<SetNickname>(_onSetNickname);
     on<Logout>(_onLogout);
     on<AuthSessionExpired>(_onSessionExpired);
@@ -101,13 +102,50 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
 
     try {
-      final user = await _authRepository.verifyOtp(
+      final result = await _authRepository.verifyOtp(
         phone: event.phone,
         otp: event.otp,
-        grade: event.grade,
       );
 
-      // 持久化存储
+      switch (result) {
+        case VerifyOtpNeedProfile(:final registrationToken):
+          // 新用户：验证码已通过，进入年级+协议补全页
+          emit(RegistrationRequired(
+            registrationToken: registrationToken,
+            phone: event.phone,
+          ));
+        case VerifyOtpLoggedIn(:final result):
+          // 老用户：直接登录
+          final user = result.user;
+          await _prefs.setString(_StorageKeys.token, user.token);
+          await _prefs.setString(_StorageKeys.userId, user.id);
+          await _prefs.setString(_StorageKeys.phone, user.phone);
+          await _prefs.setString(_StorageKeys.nickname, user.nickname);
+          await _prefs.setString(_StorageKeys.grade, user.grade);
+          emit(Authenticated(user));
+      }
+    } catch (e) {
+      emit(AuthError(_mapAuthError(e, isSendOtp: false)));
+    }
+  }
+
+  // ─── Complete Registration ──────────────────────────────────
+
+  Future<void> _onCompleteRegistration(
+    CompleteRegistration event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+
+    try {
+      final user = await _authRepository.register(
+        registrationToken: event.registrationToken,
+        grade: event.grade,
+        agreementAccepted: event.agreementAccepted,
+        nickname: event.nickname,
+        phone: event.phone,
+      );
+
       await _prefs.setString(_StorageKeys.token, user.token);
       await _prefs.setString(_StorageKeys.userId, user.id);
       await _prefs.setString(_StorageKeys.phone, user.phone);
@@ -230,6 +268,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           return '该手机号尚未注册，请先注册';
         case 10010:
           return '昵称长度应为2-12个字符';
+        case 10018:
+          return '注册凭证已失效，请重新获取验证码';
+        case 10019:
+          return '请阅读并同意用户协议与隐私政策';
       }
       // code 未命中但有后端文案 → 透传后端中文（比通用兜底更友好）
       if (e.message.isNotEmpty) return e.message;
@@ -271,6 +313,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
     if (msg.contains('昵称') || msg.contains('10010')) {
       return '昵称长度应为2-12个字符';
+    }
+    if (msg.contains('凭证') || msg.contains('10018')) {
+      return '注册凭证已失效，请重新获取验证码';
+    }
+    if (msg.contains('协议') || msg.contains('10019')) {
+      return '请阅读并同意用户协议与隐私政策';
     }
     return '操作失败，请稍后重试';
   }

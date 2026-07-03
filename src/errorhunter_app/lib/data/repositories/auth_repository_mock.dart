@@ -2,6 +2,7 @@
 /// 使用 MockAuthDataSource 提供数据，后端就绪后替换为 Remote 实现
 library;
 
+import '../../data/remote/auth_remote_data_source.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../features/auth/bloc/auth_state.dart';
 import '../mock/mock_auth_data_source.dart';
@@ -21,10 +22,24 @@ class AuthRepositoryMock implements AuthRepository {
   Future<void> sendOtp(String phone) => _dataSource.sendOtp(phone);
 
   @override
-  Future<AuthUser> verifyOtp({
+  Future<VerifyOtpResult> verifyOtp({
     required String phone,
     required String otp,
-    String? grade,
+  }) async {
+    await _dataSource.verifyOtpDelay();
+    return VerifyOtpLoggedIn(AuthResult(
+      user: _dataSource.mockVerifyOtpResult(phone: phone),
+      refreshToken: 'mock_refresh_token',
+    ));
+  }
+
+  @override
+  Future<AuthUser> register({
+    required String registrationToken,
+    required String grade,
+    required bool agreementAccepted,
+    String? nickname,
+    String phone = '',
   }) async {
     await _dataSource.verifyOtpDelay();
     return _dataSource.mockVerifyOtpResult(phone: phone, grade: grade);

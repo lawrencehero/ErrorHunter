@@ -1,6 +1,6 @@
-/// 错题猎手 - 登录页
-/// 已注册用户快捷入口：只填手机号 + 验证码（无需选年级 / 勾协议）
-/// 底部"暂无账号？快速注册"链接跳转到注册页
+/// 错题猎手 - 登录/注册合一入口
+/// 只填手机号 + 验证码：后端按手机号是否存在自动判定。
+/// 老用户直接登录；新用户校验通过后跳转补全资料页（选年级 + 勾协议）。
 library;
 
 import 'dart:async';
@@ -127,6 +127,12 @@ class _LoginPageState extends State<LoginPage> {
           );
         } else if (state is Authenticated) {
           // router redirect 会自动跳到 /home
+        } else if (state is RegistrationRequired) {
+          // 新用户：验证码已通过，跳转补全资料页（选年级 + 勾协议）
+          context.go(Routes.profileCompletion, extra: {
+            'registration_token': state.registrationToken,
+            'phone': state.phone,
+          });
         } else if (state is AuthError) {
           EHSnackbar.show(
             context,
@@ -177,14 +183,14 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     SizedBox(height: AppSpacing.lg),
                     Text(
-                      '欢迎回来',
+                      '欢迎',
                       style: AppTypography.primary.h1.copyWith(
                         color: tc.primary,
                       ),
                     ),
                     SizedBox(height: AppSpacing.sm),
                     Text(
-                      '输入手机号快速登录',
+                      '输入手机号登录或注册',
                       style: AppTypography.primary.body.copyWith(
                         color: tc.secondary,
                       ),
@@ -194,6 +200,8 @@ class _LoginPageState extends State<LoginPage> {
                     // ─── Phone Input ───────────────────────────
                     EHPhoneInput(
                       controller: _phoneController,
+                      // 玻璃拟态下输入框底色为浅色，文字用深色保证可见
+                      textColor: const Color(0xFF1A1A2E),
                       onChanged: (digits) {
                         setState(() => _phoneDigits = digits);
                         if (digits.length == 11) {
@@ -214,7 +222,8 @@ class _LoginPageState extends State<LoginPage> {
                             maxLength: 6,
                             textAlign: TextAlign.center,
                             style: AppTypography.primary.h2.copyWith(
-                              color: tc.primary,
+                              // 玻璃拟态下输入框底色为浅色，文字用深色保证可见
+                              color: const Color(0xFF1A1A2E),
                               fontWeight: FontWeight.w700,
                               letterSpacing: 8,
                             ),
@@ -307,38 +316,14 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     SizedBox(height: AppSpacing.xxl),
 
-                    // ─── Login Button ─────────────────────────
+                    // ─── Login / Register Button ──────────────
                     EHPrimaryButton(
-                      text: '登录',
+                      text: '登录 / 注册',
                       size: EHButtonSize.lg,
                       fullWidth: true,
                       enabled: _canSubmit,
                       isLoading: _isVerifying,
                       onPressed: _onSubmit,
-                    ),
-                    SizedBox(height: AppSpacing.lg),
-
-                    // ─── Switch to Register ────────────────────
-                    // 用 go 替换当前页，避免 login↔register 互相 push 堆积无法返回
-                    GestureDetector(
-                      onTap: () => context.go(Routes.register),
-                      child: RichText(
-                        text: TextSpan(
-                          style: AppTypography.primary.caption.copyWith(
-                            color: tc.secondary,
-                          ),
-                          children: [
-                            const TextSpan(text: '暂无账号？'),
-                            TextSpan(
-                              text: '快速注册',
-                              style: TextStyle(
-                                color: accent,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                     SizedBox(height: AppSpacing.xxl),
                   ],

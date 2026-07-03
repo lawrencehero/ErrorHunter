@@ -147,14 +147,27 @@ type UserInfo struct {
 	DailyReviewLimit  int    `json:"daily_review_limit"`
 }
 
-// VerifyOTP 验证验证码并返回JWT
-// 使用阿里云号码认证服务（Dypnsapi）进行验证码校验
-func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*AuthResponse, error) {
-	// 白名单号码：跳过验证码校验，任意码通过
+// VerifyOTPResult 验证验证码结果。
+//   - AuthResponse != nil：已登录（老用户）。
+//   - NeedProfile=true：新用户验证码已通过，需前端补全年级+协议后调 /auth/register；
+//     RegistrationToken 为一次性注册凭证（5 分钟）。验证码仅在此校验一次，不重复消费
+//     （阿里云 CheckSmsVerifyCode 成功即消费，故新用户不在 Register 中二次校验）。
+type VerifyOTPResult struct {
+	AuthResponse      *AuthResponse
+	NeedProfile       bool
+	RegistrationToken string
+}
+
+// VerifyOTP 验证验证码：新老用户统一先校验一次验证码，通过后区分：
+//   - 老用户：直接签发登录令牌。
+//   - 新用户：签发注册凭证，告知前端补全年级+协议（验证码不重复校验）。
+//
+// 注册/登录入口合一：用户无需也不应在前端自选"登录/注册"，由手机号是否存在决定。
+func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*VerifyOTPResult, error) {
+	// 1. 校验验证码（新老用户统一走一次）
 	if s.isBypassPhone(req.Phone) {
 		log.Printf("[INFO] OTP bypass (whitelist) for %s, any code accepted", req.Phone)
 	} else {
-		// 通过阿里云校验验证码
 		valid, err := s.smsProvider.VerifyCode(ctx, req.Phone, req.Code)
 		if err != nil {
 			log.Printf("[WARN] SMS verify failed for %s: %v", req.Phone, err)
@@ -165,36 +178,84 @@ func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*Aut
 		}
 	}
 
-	var user *model.User
-	var err error
-
-	// 注册/登录合一：手机号已存在则登录，不存在则注册
+	// 2. 区分新老用户
 	existing, _ := s.userRepo.FindByPhone(ctx, req.Phone)
 	if existing != nil {
-		// 已注册 → 登录
+		// 老用户 → 登录
 		if existing.DeletedAt != nil {
 			return nil, errcode.EAccountDeleted
 		}
 		s.userRepo.UpdateLastActive(ctx, existing.ID)
-		user = existing
-	} else {
-		// 未注册 → 创建新用户
-		user, err = s.registerUser(ctx, req)
+		resp, err := s.buildAuthResponse(ctx, existing)
 		if err != nil {
 			return nil, err
 		}
+		return &VerifyOTPResult{AuthResponse: resp}, nil
 	}
 
-	// 生成令牌对
+	// 3. 新用户 → 签发注册凭证，告知前端补全资料
+	regToken, err := s.jwtMgr.GenerateRegistrationToken(req.Phone)
+	if err != nil {
+		log.Printf("[WARN] generate registration token failed for %s: %v", req.Phone, err)
+		return nil, errcode.EInternalServer
+	}
+	log.Printf("[INFO] new user %s verified, registration token issued", req.Phone)
+	return &VerifyOTPResult{NeedProfile: true, RegistrationToken: regToken}, nil
+}
+
+// RegisterRequest 补全注册资料请求（验证码已通过，凭 registration_token 建号）。
+type RegisterRequest struct {
+	RegistrationToken string `json:"registration_token" binding:"required"`
+	Grade             string `json:"grade" binding:"required"`
+	AgreementAccepted bool   `json:"agreement_accepted"`
+	Nickname          string `json:"nickname,omitempty"`
+}
+
+// Register 凭注册凭证补全年级+协议并创建用户，返回登录态。
+//   - 凭证无效/过期 → EInvalidRegistrationToken
+//   - 凭证对应手机号已注册（凭证重放/重复提交）→ 幂等，直接登录
+//   - 未勾选协议 → EAgreementRequired（协议仅新用户注册时要求，老用户不涉及）
+//   - 年级/昵称非法 → 复用 registerUser 的 errcode
+func (s *AuthService) Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error) {
+	// 1. 校验注册凭证
+	claims, err := s.jwtMgr.ParseRegistrationToken(req.RegistrationToken)
+	if err != nil {
+		return nil, errcode.EInvalidRegistrationToken
+	}
+	phone := claims.Phone
+
+	// 2. 凭证对应手机号已注册 → 幂等直接登录（防凭证重放/重复提交）
+	if existing, _ := s.userRepo.FindByPhone(ctx, phone); existing != nil {
+		if existing.DeletedAt != nil {
+			return nil, errcode.EAccountDeleted
+		}
+		s.userRepo.UpdateLastActive(ctx, existing.ID)
+		return s.buildAuthResponse(ctx, existing)
+	}
+
+	// 3. 协议勾选校验（仅新用户注册时要求）
+	if !req.AgreementAccepted {
+		return nil, errcode.EAgreementRequired
+	}
+
+	// 4. 校验年级 + 建用户（复用 registerUser：年级映射、昵称校验、Create）
+	user, err := s.registerUser(ctx, VerifyOTPRequest{Phone: phone, Grade: req.Grade, Nickname: req.Nickname})
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. 签发登录态
+	return s.buildAuthResponse(ctx, user)
+}
+
+// buildAuthResponse 为已存在用户签发令牌对并写 refresh token 到 Redis。
+func (s *AuthService) buildAuthResponse(ctx context.Context, user *model.User) (*AuthResponse, error) {
 	accessToken, refreshToken, err := s.jwtMgr.GenerateTokenPair(user.ID)
 	if err != nil {
 		return nil, errcode.EInternalServer
 	}
-
-	// 存储refresh token到Redis（用于登出撤销）
 	refreshKey := fmt.Sprintf("token:refresh:%d", user.ID)
 	s.redis.Set(ctx, refreshKey, refreshToken, s.jwtMgr.GetRefreshExpire())
-
 	return &AuthResponse{
 		UserID:       user.ID,
 		AccessToken:  accessToken,

@@ -16,6 +16,7 @@ import (
 	"github.com/errorhunter/errorhunter-server/internal/config"
 	"github.com/errorhunter/errorhunter-server/internal/handler"
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
+	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
 	jwtPkg "github.com/errorhunter/errorhunter-server/internal/pkg/jwt"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/sms"
 	"github.com/errorhunter/errorhunter-server/internal/repository"
@@ -106,7 +107,7 @@ func TestMain(m *testing.M) {
 	testQHandler = handler.NewQuestionHandler(questionService)
 	testRHandler = handler.NewReviewHandler(reviewService, userRepo)
 	testRptHandler = handler.NewReportHandler(reportRepo, userRepo)
-	testUserHandler = handler.NewUserHandler(userRepo)
+	testUserHandler = handler.NewUserHandler(userRepo, authService)
 
 	// 构建路由
 	testRouter = buildTestRouter()
@@ -150,6 +151,7 @@ func buildTestRouter() *gin.Engine {
 		{
 			auth.POST("/otp/send", testAuthHandler.SendOTP)
 			auth.POST("/otp/verify", testAuthHandler.VerifyOTP)
+			auth.POST("/register", testAuthHandler.Register)
 			auth.POST("/refresh", testAuthHandler.RefreshToken)
 		}
 
@@ -227,6 +229,7 @@ func parseResp(t *testing.T, w *httptest.ResponseRecorder) map[string]interface{
 }
 
 // registerAndLogin 注册并登录一个测试用户，返回 access_token
+// 新契约两步：verify（新用户→10017+registration_token）→ /auth/register 建号
 func registerAndLogin(t *testing.T, phone string) string {
 	t.Helper()
 
@@ -240,17 +243,32 @@ func registerAndLogin(t *testing.T, phone string) string {
 	// Step 1.5: 从 Redis 读取验证码（测试环境专用）
 	code := getOTPFromRedis(t, "REGISTER", phone)
 
-	// Step 2: 验证验证码（自动注册+登录）
+	// Step 2: 验证验证码（新用户 → 10017 + registration_token）
 	w = doReq("POST", "/v1/auth/otp/verify", map[string]interface{}{
 		"phone": phone,
 		"code":  code,
 		"scene": "REGISTER",
-		"grade": "33",
 	}, "")
-	require.Equal(t, http.StatusOK, w.Code, "验证/注册失败: %s", w.Body.String())
+	require.Equal(t, http.StatusOK, w.Code, "验证失败: %s", w.Body.String())
 
 	resp := parseResp(t, w)
+	require.Equal(t, errcode.ErrRegistrationProfileRequired, int(resp["code"].(float64)),
+		"新用户应返回 10017 需补全资料: %s", w.Body.String())
 	data, ok := resp["data"].(map[string]interface{})
+	require.True(t, ok, "响应缺少 data 字段")
+	regToken, ok := data["registration_token"].(string)
+	require.True(t, ok && regToken != "", "响应缺少 registration_token")
+
+	// Step 3: 补全年级+协议，建号
+	w = doReq("POST", "/v1/auth/register", map[string]interface{}{
+		"registration_token":  regToken,
+		"grade":               "33",
+		"agreement_accepted":  true,
+	}, "")
+	require.Equal(t, http.StatusOK, w.Code, "注册失败: %s", w.Body.String())
+
+	resp = parseResp(t, w)
+	data, ok = resp["data"].(map[string]interface{})
 	require.True(t, ok, "响应缺少 data 字段")
 	token, ok := data["access_token"].(string)
 	require.True(t, ok && token != "", "响应缺少 access_token")

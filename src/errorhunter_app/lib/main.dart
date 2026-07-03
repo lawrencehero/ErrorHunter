@@ -52,8 +52,29 @@ Future<void> main() async {
   runApp(const ErrorHunterApp());
 }
 
-class ErrorHunterApp extends StatelessWidget {
+class ErrorHunterApp extends StatefulWidget {
   const ErrorHunterApp({super.key});
+
+  @override
+  State<ErrorHunterApp> createState() => _ErrorHunterAppState();
+}
+
+class _ErrorHunterAppState extends State<ErrorHunterApp> {
+  late final TabBackToHomeObserver _backObserver;
+
+  @override
+  void initState() {
+    super.initState();
+    // 系统返回最低层钩子：ShellRoute 内非首页 tab 根页按返回→回首页（见 TabBackToHomeObserver）。
+    _backObserver = TabBackToHomeObserver(appRouter);
+    WidgetsBinding.instance.addObserver(_backObserver);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_backObserver);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

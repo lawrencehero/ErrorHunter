@@ -100,6 +100,44 @@ func TestVerifyOTP_InvalidBody_MissingScene(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// ===== Register 补全注册资料测试 =====
+
+func TestRegister_InvalidBody_Empty(t *testing.T) {
+	// 空请求体应返回参数校验错误
+	h := &AuthHandler{}
+	tc := newTestCtx().postRoute("/test", h.Register)
+
+	w := tc.doRequest("POST", "/test", map[string]interface{}{}, nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertErrorCode(t, w, errcode.ErrParamValidation)
+}
+
+func TestRegister_InvalidBody_MissingToken(t *testing.T) {
+	// 缺 registration_token
+	h := &AuthHandler{}
+	tc := newTestCtx().postRoute("/test", h.Register)
+
+	w := tc.doRequest("POST", "/test", map[string]interface{}{
+		"grade":              "33",
+		"agreement_accepted": true,
+	}, nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertErrorCode(t, w, errcode.ErrParamValidation)
+}
+
+func TestRegister_InvalidBody_MissingGrade(t *testing.T) {
+	// 缺 grade
+	h := &AuthHandler{}
+	tc := newTestCtx().postRoute("/test", h.Register)
+
+	w := tc.doRequest("POST", "/test", map[string]interface{}{
+		"registration_token":  "some-token",
+		"agreement_accepted":  true,
+	}, nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertErrorCode(t, w, errcode.ErrParamValidation)
+}
+
 // ===== RefreshToken 刷新令牌测试 =====
 
 func TestRefreshToken_MissingField(t *testing.T) {

@@ -21,15 +21,26 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> sendOtp(String phone) => _dataSource.sendOtp(phone);
 
   @override
-  Future<AuthUser> verifyOtp({
+  Future<VerifyOtpResult> verifyOtp({
     required String phone,
     required String otp,
-    String? grade,
+  }) =>
+      _dataSource.verifyOtp(phone: phone, otp: otp);
+
+  @override
+  Future<AuthUser> register({
+    required String registrationToken,
+    required String grade,
+    required bool agreementAccepted,
+    String? nickname,
+    String phone = '',
   }) async {
-    final result = await _dataSource.verifyOtp(
-      phone: phone,
-      otp: otp,
+    final result = await _dataSource.register(
+      registrationToken: registrationToken,
       grade: grade,
+      agreementAccepted: agreementAccepted,
+      nickname: nickname,
+      phone: phone,
     );
     return result.user;
   }

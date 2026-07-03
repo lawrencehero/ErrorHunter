@@ -44,15 +44,19 @@ class EHConfirmDialog extends StatelessWidget {
   }) {
     return showDialog<bool>(
       context: context,
-      builder: (_) => EHConfirmDialog(
+      builder: (dialogContext) => EHConfirmDialog(
         title: title,
         content: content,
         confirmText: confirmText,
         cancelText: cancelText,
         isDestructive: isDestructive,
         icon: icon,
-        onConfirm: () => Navigator.of(context).pop(true),
-        onCancel: () => Navigator.of(context).pop(false),
+        // 必须用 dialogContext（对话框所在根 Navigator）来 pop，不能用外层
+        // context：当调用方位于 ShellRoute 嵌套 Navigator 内时（如个人页），
+        // Navigator.of(context) 解析到嵌套 Navigator，pop 会把调用页本身弹掉
+        // 而非对话框，导致页面空屏、showDialog 不返回。
+        onConfirm: () => Navigator.of(dialogContext).pop(true),
+        onCancel: () => Navigator.of(dialogContext).pop(false),
       ),
     );
   }

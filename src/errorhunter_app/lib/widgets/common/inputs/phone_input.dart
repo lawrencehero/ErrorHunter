@@ -19,6 +19,7 @@ class EHPhoneInput extends StatefulWidget {
     this.errorText,
     this.onChanged,
     this.enabled = true,
+    this.textColor,
   });
 
   final TextEditingController? controller;
@@ -27,6 +28,7 @@ class EHPhoneInput extends StatefulWidget {
   final String? errorText;
   final ValueChanged<String>? onChanged;
   final bool enabled;
+  final Color? textColor;
 
   @override
   State<EHPhoneInput> createState() => _EHPhoneInputState();
@@ -87,6 +89,7 @@ class _EHPhoneInputState extends State<EHPhoneInput> {
       ],
       onChanged: _onChanged,
       enabled: widget.enabled,
+      textColor: widget.textColor,
     );
   }
 }

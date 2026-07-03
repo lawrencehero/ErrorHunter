@@ -56,3 +56,7 @@ coverage.html
 
 # Stray compiled binaries
 *.exe
+
+# Poster font cache (regenerable by docs/05-设计/gen_poster.py)
+docs/05-设计/_font_cache/
+docs/05-设计/_gfont.css

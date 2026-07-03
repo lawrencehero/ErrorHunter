@@ -166,6 +166,7 @@ func main() {
 		{
 			auth.POST("/otp/send", authHandler.SendOTP)
 			auth.POST("/otp/verify", authHandler.VerifyOTP)
+			auth.POST("/register", authHandler.Register)
 			auth.POST("/refresh", authHandler.RefreshToken)
 		}
 

@@ -3,13 +3,15 @@
   错题猎手 - 网络安全配置
   ─────────────────────────────────────────────
   默认禁止明文 HTTP（Android 9+ 默认行为，更安全）
-  例外：允许内网开发服务器（局域网 IP + 模拟器 + 本地）走明文 HTTP
-  生产环境上线后应删除内网 IP，仅保留 HTTPS 域名
+  例外：允许生产公网服务器 + 内网开发服务器（局域网 IP + 模拟器 + 本地）走明文 HTTP
+  后端启用 HTTPS 后应删除公网 IP 与内网 IP，仅保留 HTTPS 域名
 -->
 <network-security-config>
     <!-- 允许明文 HTTP 的例外域名/IP -->
     <domain-config cleartextTrafficPermitted="true">
-        <!-- 当前开发服务器 IP -->
+        <!-- 生产公网服务器（API 默认指向）-->
+        <domain includeSubdomains="true">47.108.190.116</domain>
+        <!-- 内网开发服务器 IP -->
         <domain includeSubdomains="true">REDACTED_LAN</domain>
         <!-- Android 模拟器访问宿主机 -->
         <domain includeSubdomains="true">10.0.2.2</domain>

@@ -27,22 +27,41 @@ class SendOtp extends AuthEvent {
   List<Object?> get props => [phone];
 }
 
-/// 验证 OTP 并注册/登录
-/// grade 为 null 时走"已注册用户登录"路径（不传 grade 给后端）
-/// grade 非 null 时走"新用户注册"路径（必传 grade 给后端）
+/// 验证 OTP（注册/登录合一入口）。
+/// 后端按手机号是否存在自动判定：老用户直接登录，新用户进入补全资料流程。
 class VerifyOtp extends AuthEvent {
   final String phone;
   final String otp;
-  final String? grade; // 年级代码，注册时必填，登录时可空
 
   const VerifyOtp({
     required this.phone,
     required this.otp,
-    this.grade,
   });
 
   @override
-  List<Object?> get props => [phone, otp, grade];
+  List<Object?> get props => [phone, otp];
+}
+
+/// 新用户补全年级+协议并完成注册。
+/// registrationToken 由 VerifyOtp 在新用户分支返回（RegistrationRequired 携带）。
+class CompleteRegistration extends AuthEvent {
+  final String registrationToken;
+  final String phone;
+  final String grade;
+  final bool agreementAccepted;
+  final String? nickname;
+
+  const CompleteRegistration({
+    required this.registrationToken,
+    required this.phone,
+    required this.grade,
+    required this.agreementAccepted,
+    this.nickname,
+  });
+
+  @override
+  List<Object?> get props =>
+      [registrationToken, phone, grade, agreementAccepted, nickname];
 }
 
 /// 设置昵称（首次注册后）

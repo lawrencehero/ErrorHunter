@@ -5,7 +5,6 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,7 +14,7 @@ import '../features/auth/bloc/auth_state.dart';
 import '../features/auth/pages/home_page.dart';
 import '../features/auth/pages/login_page.dart';
 import '../features/auth/pages/onboarding_page.dart';
-import '../features/auth/pages/register_page.dart';
+import '../features/auth/pages/profile_completion_page.dart';
 import '../features/auth/pages/splash_screen.dart';
 import '../features/auth/pages/user_agreement_page.dart';
 import '../features/auth/pages/privacy_policy_page.dart';
@@ -55,7 +54,7 @@ class Routes {
   static const String splash = '/splash';
   static const String onboarding = '/onboarding';
   static const String login = '/login';
-  static const String register = '/register';
+  static const String profileCompletion = '/profile-completion';
 
   // ─── Main Tabs ───────────────────────────────────────────
   static const String home = '/home';
@@ -117,14 +116,16 @@ final GoRouter appRouter = GoRouter(
     final isAtAuthFlow = loc == Routes.splash
         || loc == Routes.onboarding
         || loc == Routes.login
-        || loc == Routes.register
+        || loc == Routes.profileCompletion
         || loc.startsWith('/legal/');
 
     // 已登录但停留在 auth 流程 → 跳到首页
     // 注意：splash 不在此列——splash 有自己的最短品牌展示(800ms)+BlocListener 跳转逻辑，
     // 这里若重定向会破坏品牌动画。splash 卡住的极端情况由其 5s 超时兜底。
     if (authState is Authenticated &&
-        (loc == Routes.login || loc == Routes.register || loc == Routes.onboarding)) {
+        (loc == Routes.login ||
+            loc == Routes.profileCompletion ||
+            loc == Routes.onboarding)) {
       return Routes.home;
     }
 
@@ -150,8 +151,14 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LoginPage(),
     ),
     GoRoute(
-      path: Routes.register,
-      builder: (context, state) => const RegisterPage(),
+      path: Routes.profileCompletion,
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>? ?? {};
+        return ProfileCompletionPage(
+          registrationToken: extra['registration_token'] as String? ?? '',
+          phone: extra['phone'] as String? ?? '',
+        );
+      },
     ),
 
     // ─── Main Shell (Bottom Navigation) ─────────────────
@@ -286,50 +293,36 @@ class _MainShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _calculateSelectedIndex(context);
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        // 已在首页 → 允许退出 App
-        if (currentIndex == 0) {
-          SystemNavigator.pop();
-          return;
-        }
-        // 非首页 → 返回到首页 tab
-        context.go(Routes.home);
-      },
-      child: Scaffold(
-        body: child,
+    return Scaffold(
+      body: child,
         extendBody: false,
-      bottomNavigationBar: EHBottomNavBar(
-        currentIndex: _calculateSelectedIndex(context),
-        onTap: (index) => _onItemTapped(index, context),
-        onFabPressed: () => context.go(Routes.addQuestion),
-        items: const [
-          EHBottomNavItem(
-            icon: Icons.home_outlined,
-            activeIcon: Icons.home,
-            label: '首页',
-          ),
-          EHBottomNavItem(
-            icon: Icons.menu_book_outlined,
-            activeIcon: Icons.menu_book,
-            label: '错题本',
-          ),
-          EHBottomNavItem(
-            icon: Icons.bar_chart_outlined,
-            activeIcon: Icons.bar_chart,
-            label: '周报',
-          ),
-          EHBottomNavItem(
-            icon: Icons.person_outline,
-            activeIcon: Icons.person,
-            label: '我的',
-          ),
-        ],
-      ),
-      ),
+        bottomNavigationBar: EHBottomNavBar(
+          currentIndex: _calculateSelectedIndex(context),
+          onTap: (index) => _onItemTapped(index, context),
+          onFabPressed: () => context.go(Routes.addQuestion),
+          items: const [
+            EHBottomNavItem(
+              icon: Icons.home_outlined,
+              activeIcon: Icons.home,
+              label: '首页',
+            ),
+            EHBottomNavItem(
+              icon: Icons.menu_book_outlined,
+              activeIcon: Icons.menu_book,
+              label: '错题本',
+            ),
+            EHBottomNavItem(
+              icon: Icons.bar_chart_outlined,
+              activeIcon: Icons.bar_chart,
+              label: '周报',
+            ),
+            EHBottomNavItem(
+              icon: Icons.person_outline,
+              activeIcon: Icons.person,
+              label: '我的',
+            ),
+          ],
+        ),
     );
   }
 
@@ -371,5 +364,38 @@ class GoRouterRefreshStream extends ChangeNotifier {
   void dispose() {
     _subscription.cancel();
     super.dispose();
+  }
+}
+
+/// 系统返回最低层钩子：在「非首页一级 tab 根页」按系统返回 → 回首页 tab，而非退出 App。
+///
+/// 为何不用 PopScope：ShellRoute 不是 PopScope 能管理的 ModalRoute，go_router 把 tab
+/// 根页的返回路由到顶层 Navigator 时绕过 shell 上的 PopScope（真机验证不生效，前三次
+/// 修复失败的根因）。对比之下，/add 等顶层路由的 PopScope 能生效（root Navigator 上的
+/// ModalRoute）。WidgetsBindingObserver.didPopRoute 是系统返回的最低层钩子，与 /add 的
+/// PopScope 走同一返回路径（系统返回 → engine.handlePopRoute → 遍历 observer），真机
+/// 稳定触发——这是本方案能在真机生效的依据。
+///
+/// didPopRoute 返回 false 时交给默认（Router 的 BackButtonDispatcher）：
+/// 首页根页 → 无栈 pop → 退出 App；详情子页 → pop 子页；/add 等全屏页 → 其自身 PopScope 接管。
+class TabBackToHomeObserver extends WidgetsBindingObserver {
+  TabBackToHomeObserver(this._router);
+
+  final GoRouter _router;
+
+  /// 当前是否处于「非首页一级 tab 根页」——抽成可测纯函数。
+  static bool shouldIntercept(String location) =>
+      location == Routes.questions ||
+      location == Routes.weeklyReports ||
+      location == Routes.profile;
+
+  @override
+  Future<bool> didPopRoute() async {
+    final loc = _router.routerDelegate.currentConfiguration.uri.toString();
+    if (shouldIntercept(loc)) {
+      _router.go(Routes.home);
+      return true;
+    }
+    return false;
   }
 }

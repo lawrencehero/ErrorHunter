@@ -43,6 +43,9 @@ func (h *AuthHandler) SendOTP(c *gin.Context) {
 
 // VerifyOTP 验证验证码
 // POST /auth/otp/verify
+//   - 老用户：code=0，data=AuthResponse（登录态）
+//   - 新用户：code=10017（ErrRegistrationProfileRequired），data={is_new_user,registration_token}
+//     前端据此弹出年级+协议补全页，再调 /auth/register。
 func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 	var req service.VerifyOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -50,7 +53,45 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.authService.VerifyOTP(c.Request.Context(), req)
+	result, err := h.authService.VerifyOTP(c.Request.Context(), req)
+	if err != nil {
+		if appErr, ok := err.(*errcode.AppError); ok {
+			respondError(c, appErr)
+		} else {
+			respondError(c, errcode.EInternalServer)
+		}
+		return
+	}
+
+	if result.NeedProfile {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    errcode.ErrRegistrationProfileRequired,
+			"message": "请补全注册资料",
+			"data": gin.H{
+				"is_new_user":       true,
+				"registration_token": result.RegistrationToken,
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    result.AuthResponse,
+	})
+}
+
+// Register 凭注册凭证补全年级+协议并建号
+// POST /auth/register
+func (h *AuthHandler) Register(c *gin.Context) {
+	var req service.RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, errcode.EParamValidation.WithData(err.Error()))
+		return
+	}
+
+	resp, err := h.authService.Register(c.Request.Context(), req)
 	if err != nil {
 		if appErr, ok := err.(*errcode.AppError); ok {
 			respondError(c, appErr)

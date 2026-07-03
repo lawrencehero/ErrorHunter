@@ -104,6 +104,8 @@ API Docs: /v1/*
 
 > ⚠️ 以上为开发环境默认值，生产部署请务必修改密码和 JWT Secret。
 
+> ℹ️ 生产环境客户端默认指向公网服务器 `http://47.108.190.116:8080/v1`（见 `src/errorhunter_app/lib/config/app_config.dart` 的 `apiBaseUrl` 默认值），可用 `--dart-define=API_BASE_URL=...` 覆盖。
+
 ---
 
 ## 环境变量说明

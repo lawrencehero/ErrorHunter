@@ -16,11 +16,15 @@ class MockAuthRepository implements AuthRepository {
   bool shouldValidateSucceed = true;
   bool shouldSendOtpSucceed = true;
   bool shouldVerifyOtpSucceed = true;
-  AuthUser? verifyOtpResult;
+  VerifyOtpResult? verifyOtpResult;
   /// 发送验证码抛出的异常（非空时优先于 shouldSendOtpSucceed）
   Object? sendOtpError;
   /// 验证 OTP 抛出的异常（非空时优先于 shouldVerifyOtpSucceed）
   Object? verifyOtpError;
+  /// register 抛出的异常
+  Object? registerError;
+  /// register 返回的用户（默认构造一个）
+  AuthUser? registerResult;
   /// 更新昵称是否抛出异常
   bool shouldUpdateNicknameFail = false;
   /// 登出抛出的异常（非空时模拟后端 /auth/logout 失败）
@@ -42,22 +46,43 @@ class MockAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthUser> verifyOtp({
+  Future<VerifyOtpResult> verifyOtp({
     required String phone,
     required String otp,
-    String? grade,
   }) async {
     if (verifyOtpError != null) throw verifyOtpError!;
     if (!shouldVerifyOtpSucceed) {
       throw Exception('验证失败');
     }
     return verifyOtpResult ??
+        VerifyOtpLoggedIn(AuthResult(
+          user: AuthUser(
+            id: 'user_001',
+            phone: phone,
+            nickname: '测试用户',
+            grade: '',
+            token: 'mock_token_abc123',
+          ),
+          refreshToken: 'mock_refresh',
+        ));
+  }
+
+  @override
+  Future<AuthUser> register({
+    required String registrationToken,
+    required String grade,
+    required bool agreementAccepted,
+    String? nickname,
+    String phone = '',
+  }) async {
+    if (registerError != null) throw registerError!;
+    return registerResult ??
         AuthUser(
-          id: 'user_001',
+          id: 'user_new',
           phone: phone,
-          nickname: '测试用户',
-          grade: grade ?? '',
-          token: 'mock_token_abc123',
+          nickname: '新用户',
+          grade: grade,
+          token: 'mock_token_new',
         );
   }
 
@@ -213,7 +238,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '123456',
-        grade: '31',
       ));
 
       await expectLater(
@@ -230,7 +254,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
 
       await expectLater(
@@ -249,7 +272,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -264,7 +286,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -280,7 +301,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -295,12 +315,64 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
       expect(states.last, isA<AuthError>());
       expect((states.last as AuthError).message, '操作失败，请稍后重试');
+    });
+  });
+
+  // ─── CompleteRegistration Tests（新用户补全资料）─────────
+
+  group('CompleteRegistration', () {
+    test('注册成功 → Authenticated', () async {
+      authBloc.add(const CompleteRegistration(
+        registrationToken: 'reg_tok',
+        phone: '13812345678',
+        grade: '33',
+        agreementAccepted: true,
+      ));
+
+      await expectLater(
+        authBloc.stream,
+        emitsInOrder([
+          isA<AuthLoading>(),
+          isA<Authenticated>(),
+        ]),
+      );
+    });
+
+    test('协议未勾选(10019) → 协议文案', () async {
+      mockRepo.registerError = const AuthApiException(10019, '请勾选协议');
+
+      final future = authBloc.stream.take(2).toList();
+      authBloc.add(const CompleteRegistration(
+        registrationToken: 'reg_tok',
+        phone: '13812345678',
+        grade: '33',
+        agreementAccepted: false,
+      ));
+      final states = await future;
+
+      expect(states.last, isA<AuthError>());
+      expect((states.last as AuthError).message, '请阅读并同意用户协议与隐私政策');
+    });
+
+    test('注册凭证失效(10018) → 凭证失效文案', () async {
+      mockRepo.registerError = const AuthApiException(10018, '凭证过期');
+
+      final future = authBloc.stream.take(2).toList();
+      authBloc.add(const CompleteRegistration(
+        registrationToken: 'reg_tok',
+        phone: '13812345678',
+        grade: '33',
+        agreementAccepted: true,
+      ));
+      final states = await future;
+
+      expect(states.last, isA<AuthError>());
+      expect((states.last as AuthError).message, '注册凭证已失效，请重新获取验证码');
     });
   });
 
@@ -316,7 +388,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -331,7 +402,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -346,7 +416,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -361,7 +430,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -376,7 +444,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
         // nickname 在 VerifyOtp 事件里没字段，但 _mapAuthError 按 code 命中
       ));
       final states = await future;
@@ -394,7 +461,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -421,7 +487,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '000000',
-        grade: '31',
       ));
       final states = await future;
 
@@ -527,7 +592,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '123456',
-        grade: '31',
       ));
 
       // 等待登录完成
@@ -662,7 +726,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '123456',
-        grade: '31',
       ));
       await future0;
       final before = authBloc.state as Authenticated;
@@ -687,7 +750,6 @@ void main() {
       authBloc.add(const VerifyOtp(
         phone: '13812345678',
         otp: '123456',
-        grade: '31',
       ));
       await future0;
 

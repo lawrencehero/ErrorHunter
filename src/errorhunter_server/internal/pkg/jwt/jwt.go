@@ -17,6 +17,14 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// RegClaims 注册凭证声明：验证码校验通过后签发，用于 /auth/register 补全资料建号。
+// 与登录态 Claims 区分：用 Phone + Subject="registration" 标识，复用 accessSecret 签名，
+// 短时效（5 分钟），一次性消费（建号后手机号即存在，重放会被 Register 视为"已注册→登录"）。
+type RegClaims struct {
+	Phone string `json:"phone"`
+	jwt.RegisteredClaims
+}
+
 type Manager struct {
 	accessSecret  []byte
 	refreshSecret []byte
@@ -76,6 +84,43 @@ func (m *Manager) GenerateTokenPair(userID int64) (accessToken, refreshToken str
 		return "", "", err
 	}
 	return accessToken, refreshToken, nil
+}
+
+// GenerateRegistrationToken 生成注册凭证（验证码已通过后签发，5 分钟有效）。
+func (m *Manager) GenerateRegistrationToken(phone string) (string, error) {
+	now := time.Now()
+	claims := RegClaims{
+		Phone: phone,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
+			Issuer:    "errorhunter",
+			Subject:   "registration",
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(m.accessSecret)
+}
+
+// ParseRegistrationToken 解析注册凭证，校验签名、有效期与 Subject。
+func (m *Manager) ParseRegistrationToken(tokenString string) (*RegClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &RegClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
+		return m.accessSecret, nil
+	})
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, ErrExpiredToken
+		}
+		return nil, ErrInvalidToken
+	}
+	claims, ok := token.Claims.(*RegClaims)
+	if !ok || !token.Valid || claims.Subject != "registration" {
+		return nil, ErrInvalidToken
+	}
+	return claims, nil
 }
 
 // ParseAccessToken 解析访问令牌

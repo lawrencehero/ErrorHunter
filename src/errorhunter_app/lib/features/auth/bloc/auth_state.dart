@@ -92,6 +92,21 @@ class OtpVerified extends AuthState {
   const OtpVerified();
 }
 
+/// 新用户验证码已通过，需补全年级+协议。
+/// 携带一次性 registration_token 与手机号，供补全页提交注册。
+class RegistrationRequired extends AuthState {
+  final String registrationToken;
+  final String phone;
+
+  const RegistrationRequired({
+    required this.registrationToken,
+    required this.phone,
+  });
+
+  @override
+  List<Object?> get props => [registrationToken, phone];
+}
+
 /// 认证错误
 class AuthError extends AuthState {
   final String message;

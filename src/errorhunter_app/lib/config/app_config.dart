@@ -16,10 +16,10 @@ class AppConfig {
   static const bool useMock = false;
 
   /// 后端 API 基础 URL（含 /v1 前缀）
-  /// 开发环境指向本地，生产环境替换为真实地址
+  /// 默认指向生产公网服务器；本地开发可用 --dart-define=API_BASE_URL=... 覆盖
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://REDACTED_LAN:8080/v1',
+    defaultValue: 'http://47.108.190.116:8080/v1',
   );
 
   /// API 请求超时时间（秒）

@@ -2,6 +2,7 @@
 /// 定义认证相关的数据访问契约
 library;
 
+import '../../data/remote/auth_remote_data_source.dart';
 import '../../features/auth/bloc/auth_state.dart';
 
 /// 认证仓库抽象
@@ -12,12 +13,19 @@ abstract class AuthRepository {
   /// 发送 OTP 验证码
   Future<void> sendOtp(String phone);
 
-  /// 验证 OTP 并返回用户信息
-  /// grade 为 null 时走"已注册用户登录"路径
-  Future<AuthUser> verifyOtp({
+  /// 验证 OTP（注册/登录合一）：老用户返回登录态，新用户返回需补全资料。
+  Future<VerifyOtpResult> verifyOtp({
     required String phone,
     required String otp,
-    String? grade,
+  });
+
+  /// 凭注册凭证补全年级+协议并建号（仅新用户）。
+  Future<AuthUser> register({
+    required String registrationToken,
+    required String grade,
+    required bool agreementAccepted,
+    String? nickname,
+    String phone = '',
   });
 
   /// 更新昵称

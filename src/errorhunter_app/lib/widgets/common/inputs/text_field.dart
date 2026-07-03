@@ -32,6 +32,7 @@ class EHTextField extends StatefulWidget {
     this.focusNode,
     this.textAlign = TextAlign.start,
     this.fillColor,
+    this.textColor,
   });
 
   final TextEditingController? controller;
@@ -52,6 +53,7 @@ class EHTextField extends StatefulWidget {
   final FocusNode? focusNode;
   final TextAlign textAlign;
   final Color? fillColor;
+  final Color? textColor;
 
   @override
   State<EHTextField> createState() => _EHTextFieldState();
@@ -152,7 +154,8 @@ class _EHTextFieldState extends State<EHTextField> {
               counterText: '',
             ),
             style: AppTypography.primary.body.copyWith(
-              color: widget.enabled ? tc.primary : tc.tertiary,
+              color: widget.textColor ??
+                  (widget.enabled ? tc.primary : tc.tertiary),
             ),
             obscureText: widget.obscureText,
             maxLines: widget.maxLines,

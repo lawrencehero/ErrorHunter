@@ -48,6 +48,9 @@ const (
 	ErrAccountDeleted         = 10014
 	ErrDeviceLimitExceeded    = 10015
 	ErrPushTokenInvalid       = 10016
+	ErrRegistrationProfileRequired = 10017 // 新用户验证码通过后需补全年级+协议（HTTP 200，非错误）
+	ErrInvalidRegistrationToken    = 10018 // 注册凭证无效或已过期
+	ErrAgreementRequired           = 10019 // 未勾选用户协议与隐私政策
 )
 
 // ===== 20000-29999 错题模块 =====
@@ -143,6 +146,8 @@ var (
 	EDailyLimitInvalid      = New(ErrDailyLimitInvalid, "每日复习上限应在10-30之间", http.StatusBadRequest)
 	EAccountDeleted         = New(ErrAccountDeleted, "该账号已注销", http.StatusForbidden)
 	EDeviceLimitExceeded    = New(ErrDeviceLimitExceeded, "设备数已达上限", http.StatusBadRequest)
+	EInvalidRegistrationToken = New(ErrInvalidRegistrationToken, "注册凭证无效或已过期，请重新获取验证码", http.StatusBadRequest)
+	EAgreementRequired       = New(ErrAgreementRequired, "请阅读并同意用户协议与隐私政策", http.StatusBadRequest)
 
 	// 错题模块
 	EStorageFull            = New(ErrStorageFull, "存储空间已满，请清理空间或升级", http.StatusForbidden)

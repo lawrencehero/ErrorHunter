@@ -620,6 +620,8 @@ INSERT INTO knowledge_points (parent_id, name, level, stage, keywords, sort_orde
 
 > 后端 Gin 路由组为 `/v1`，所有端点（除 `/health` 外）均挂在该组下。
 
+> ℹ️ 实际部署：生产环境客户端当前默认指向公网服务器 `http://47.108.190.116:8080/v1`（见 `src/errorhunter_app/lib/config/app_config.dart` 的 `apiBaseUrl`），待域名与 HTTPS 证书就绪后切回 `https://api.errorhunter.com/v1`。
+
 ### 认证方式
 
 ```

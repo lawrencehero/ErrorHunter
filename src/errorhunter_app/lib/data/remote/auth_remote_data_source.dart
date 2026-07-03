@@ -73,13 +73,17 @@ class AuthRemoteDataSource {
     }
   }
 
-  /// 验证 OTP 并注册/登录，返回用户信息 + token
-  /// grade 为 null 时走"登录"路径（不传 grade 给后端，由后端按手机号识别用户）
-  Future<AuthResult> verifyOtp({
+  /// 验证 OTP（注册/登录合一入口）。
+  ///
+  /// 后端先统一校验一次验证码，再按手机号是否存在区分：
+  /// - 老用户：code=0，返回登录态 → [VerifyOtpLoggedIn]
+  /// - 新用户：code=10017，返回 registration_token → [VerifyOtpNeedProfile]，
+  ///   前端据此弹出年级+协议补全页，再调 [register] 建号。
+  ///
+  /// 验证码只在此消费一次；新用户不在 register 中二次校验（阿里云校验码成功即失效）。
+  Future<VerifyOtpResult> verifyOtp({
     required String phone,
     required String otp,
-    String? grade,
-    String? nickname,
   }) async {
     final Response<Map<String, dynamic>> response;
     try {
@@ -89,7 +93,54 @@ class AuthRemoteDataSource {
           'phone': phone,
           'code': otp,
           'scene': 'REGISTER',
-          if (grade != null && grade.isNotEmpty) 'grade': grade,
+        },
+      );
+    } on DioException catch (e) {
+      throw _mapDioException(e);
+    } on SocketException {
+      throw const AuthNetworkException();
+    }
+
+    final body = response.data;
+    if (body == null) {
+      throw Exception('Invalid verify OTP response');
+    }
+
+    // 新用户：code=10017 → 需补全资料
+    final code = body['code'];
+    if (code == 10017) {
+      final data = body['data'] as Map<String, dynamic>?;
+      final token = data?['registration_token'] as String? ?? '';
+      if (token.isEmpty) {
+        throw Exception('Invalid verify OTP response');
+      }
+      return VerifyOtpNeedProfile(token);
+    }
+
+    // 老用户：code=0 → 登录
+    return VerifyOtpLoggedIn(
+      await _parseAuthResult(response, phone),
+    );
+  }
+
+  /// 凭注册凭证补全年级+协议并建号，返回登录态。
+  ///
+  /// 仅新用户走此接口；registration_token 由 [verifyOtp] 在新用户分支返回，5 分钟有效。
+  Future<AuthResult> register({
+    required String registrationToken,
+    required String grade,
+    required bool agreementAccepted,
+    String? nickname,
+    String phone = '',
+  }) async {
+    final Response<Map<String, dynamic>> response;
+    try {
+      response = await _client.post<Map<String, dynamic>>(
+        ApiEndpoints.register,
+        data: {
+          'registration_token': registrationToken,
+          'grade': grade,
+          'agreement_accepted': agreementAccepted,
           if (nickname != null && nickname.isNotEmpty) 'nickname': nickname,
         },
       );
@@ -99,9 +150,18 @@ class AuthRemoteDataSource {
       throw const AuthNetworkException();
     }
 
+    return _parseAuthResult(response, phone);
+  }
+
+  /// 解析后端登录态响应（code=0，data 含 user + access/refresh token）为 [AuthResult]，
+  /// 并持久化 token。verifyOtp（老用户登录）与 register（建号）共用。
+  Future<AuthResult> _parseAuthResult(
+    Response<Map<String, dynamic>> response,
+    String fallbackPhone,
+  ) async {
     final data = response.data?['data'] as Map<String, dynamic>?;
     if (data == null) {
-      throw Exception('Invalid verify OTP response');
+      throw Exception('Invalid auth response');
     }
 
     final userData = data['user'] as Map<String, dynamic>?;
@@ -116,10 +176,14 @@ class AuthRemoteDataSource {
 
     final user = AuthUser(
       id: (userData?['id'] ?? 0).toString(),
-      phone: phone,
+      // 用用户输入的真实号，不用后端返回的掩码号（后端为隐私对 phone 做了 138****8000
+      // 掩码）。客户端需要真实号用于：登录页重登预填、注销账号调 API 等。
+      // 掩码号含 '*' 会原样发回后端导致短信 API 报错（500）。
+      phone: fallbackPhone.isNotEmpty
+          ? fallbackPhone
+          : (userData?['phone'] as String? ?? ''),
       nickname: userData?['nickname'] as String? ?? '',
-      // 已注册用户登录时，后端返回的 grade 优先；否则用入参
-      grade: userData?['grade'] as String? ?? grade ?? '',
+      grade: userData?['grade'] as String? ?? '',
       token: accessToken,
       isFirstLogin: true,
     );
@@ -253,4 +317,21 @@ class AuthResult {
 
   final AuthUser user;
   final String refreshToken;
+}
+
+/// verifyOtp 的密封结果：老用户已登录 / 新用户需补全资料。
+sealed class VerifyOtpResult {
+  const VerifyOtpResult();
+}
+
+/// 老用户：验证码通过，已签发登录态。
+class VerifyOtpLoggedIn extends VerifyOtpResult {
+  final AuthResult result;
+  const VerifyOtpLoggedIn(this.result);
+}
+
+/// 新用户：验证码已通过，需前端补全年级+协议后调 register 建号。
+class VerifyOtpNeedProfile extends VerifyOtpResult {
+  final String registrationToken;
+  const VerifyOtpNeedProfile(this.registrationToken);
 }

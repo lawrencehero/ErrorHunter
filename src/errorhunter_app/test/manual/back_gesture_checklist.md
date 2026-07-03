@@ -1,14 +1,19 @@
-# 返回手势手工回归 Checklist（修复2）
+# 返回手势手工回归 Checklist（修复3）
 
-> 适用：`lib/router/app_router.dart` 的 `_MainShell` PopScope 逻辑 +
-> `AndroidManifest.xml` 的 `enableOnBackInvokedCallback="true"`。
+> 适用：`lib/router/app_router.dart` 的 `_MainShell` PopScope 逻辑（修复3）。
+> 修复3 用 PopScope(canPop: 动态, onPopInvokedWithResult) 放在 ShellRoute
+> 的 `_MainShell` build 顶层；AndroidManifest **未设**
+> `enableOnBackInvokedCallback`（走传统返回路径，PopScope 才稳定触发）。
 >
-> **为何不自动化**：返回手势依赖 Android 系统层（predictive back / 侧滑 /
-> 系统返回键），Flutter 单元测试与 widget 测试均无法触发真实的系统 back
-> 事件流。`PopScope.onPopInvokedWithResult` 的回调由平台通道驱动，
-> `flutter_test` 环境下 `SystemNavigator.pop()` 也不会真正退出 App。
-> 因此只能用真机/模拟器手工回归。每次改动 `_MainShell`、`AndroidManifest`
-> 或升级 Flutter/GoRouter 后执行本表。
+> **自动测试覆盖**：`test/features/back_gesture_intercept_test.dart` 用
+> `tester.binding.handlePopRoute()` 模拟系统返回，已覆盖错题本/周报/我的
+> tab 根页回首页、首页放行退出、错题详情子页正常 pop、全屏页不被误拦截。
+> 该测试在 flutter_test 环境验证拦截机制（go_router popRoute → maybePop →
+> PopScope.onPopInvokedWithResult）能被触发并正确重定向。
+>
+> **仍需真机回归**：predictive back（侧滑）/系统返回键的真实平台事件流、
+> 各 Android 版本/ROM 的 OnBackPressedDispatcher 差异，需真机验证。
+> 每次改动 `_MainShell`、`AndroidManifest` 或升级 Flutter/GoRouter 后执行。
 
 ## 前置
 
@@ -66,9 +71,9 @@
 | D2 | 在 API < 33 设备上重复 B1~B2 | 首页返回退出 App |
 | D3 | 在 API < 33 设备上重复 C 表 | 全屏页正常返回 |
 
-**说明**：`enableOnBackInvokedCallback="true"` 在 API<33 时被系统忽略，
-回退到经典三按键返回，PopScope 仍应正确触发。若低版本出现「无反应」或
-「直接退桌面」= 回归。
+**说明**：修复3 不设 `enableOnBackInvokedCallback`，全版本走经典返回路径，
+PopScope.onPopInvokedWithResult 在传统 OnBackPressedDispatcher 上稳定触发。
+若低版本出现「无反应」或「直接退桌面」= 回归。
 
 ### E. 边界 / 状态
 

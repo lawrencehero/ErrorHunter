@@ -33,17 +33,23 @@ class FakeApiClient implements ApiClient {
   FakeApiClient({
     Map<String, Object?>? responses,
     Map<String, Object>? exceptions,
+    Map<String, int>? codes,
   })  : _responses = responses ?? const {},
-        _exceptions = exceptions ?? const {};
+        _exceptions = exceptions ?? const {},
+        _codes = codes ?? const {};
 
   final Map<String, Object?> _responses;
   final Map<String, Object> _exceptions;
+  final Map<String, int> _codes;
   final List<RecordedCall> calls = [];
 
   Response<T> _response<T>(String path) {
     final inner = _responses[path];
     return Response<T>(
-      data: <String, dynamic>{'data': inner} as T?,
+      data: <String, dynamic>{
+        'code': _codes[path] ?? 0,
+        'data': inner,
+      } as T?,
       statusCode: 200,
       requestOptions: RequestOptions(path: path),
     );
@@ -192,7 +198,7 @@ void main() {
       final ds = AuthRemoteDataSource(client: client);
 
       await expectLater(
-        ds.verifyOtp(phone: '13812345678', otp: '000000', grade: '31'),
+        ds.verifyOtp(phone: '13812345678', otp: '000000'),
         throwsA(isA<AuthApiException>()
             .having((e) => e.code, 'code', 10014)
             .having((e) => e.message, 'message', '该账号已注销')),
@@ -210,7 +216,7 @@ void main() {
       final ds = AuthRemoteDataSource(client: client);
 
       await expectLater(
-        ds.verifyOtp(phone: '13812345678', otp: '000000', grade: '31'),
+        ds.verifyOtp(phone: '13812345678', otp: '000000'),
         throwsA(isA<AuthApiException>()
             .having((e) => e.code, 'code', 10010)),
       );
@@ -267,11 +273,12 @@ void main() {
   // ─── 成功路径回归 ──────────────────────────────────────────
 
   group('verifyOtp 成功', () {
-    test('返回 AuthResult 并保存 token', () async {
+    test('老用户 code=0 → VerifyOtpLoggedIn 并保存 token', () async {
       final client = FakeApiClient(responses: {
         ApiEndpoints.verifyOtp: <String, dynamic>{
           'user': {
             'id': 42,
+            'phone': '13812345678',
             'nickname': '小明',
             'grade': '31',
           },
@@ -284,15 +291,64 @@ void main() {
       final result = await ds.verifyOtp(
         phone: '13812345678',
         otp: '123456',
-        grade: '31',
       );
 
-      expect(result.user.id, '42');
-      expect(result.user.phone, '13812345678');
-      expect(result.user.nickname, '小明');
-      expect(result.user.grade, '31');
-      expect(result.user.token, 'access_abc');
-      expect(result.refreshToken, 'refresh_xyz');
+      expect(result, isA<VerifyOtpLoggedIn>());
+      final ar = (result as VerifyOtpLoggedIn).result;
+      expect(ar.user.id, '42');
+      expect(ar.user.phone, '13812345678');
+      expect(ar.user.nickname, '小明');
+      expect(ar.user.grade, '31');
+      expect(ar.user.token, 'access_abc');
+      expect(ar.refreshToken, 'refresh_xyz');
+    });
+
+    test('后端返回掩码号 138****5678 → 用用户输入的真实号，不用掩码号', () async {
+      // 后端 toUserInfo 对 phone 做了掩码（138****5678）。
+      // 客户端必须用用户输入的真实号，否则重登预填/注销会拿到含 * 的号导致后端 500。
+      final client = FakeApiClient(responses: {
+        ApiEndpoints.verifyOtp: <String, dynamic>{
+          'user': {
+            'id': 42,
+            'phone': '138****5678', // 后端掩码号
+            'nickname': '小明',
+            'grade': '31',
+          },
+          'access_token': 'access_abc',
+          'refresh_token': 'refresh_xyz',
+        },
+      });
+      final ds = AuthRemoteDataSource(client: client);
+
+      final result = await ds.verifyOtp(
+        phone: '13812345678', // 用户输入的真实号
+        otp: '123456',
+      );
+
+      final ar = (result as VerifyOtpLoggedIn).result;
+      expect(ar.user.phone, '13812345678', reason: '应存真实号而非掩码号');
+      expect(ar.user.phone, isNot(contains('*')));
+    });
+
+    test('新用户 code=10017 → VerifyOtpNeedProfile(registration_token)', () async {
+      final client = FakeApiClient(
+        responses: {
+          ApiEndpoints.verifyOtp: <String, dynamic>{
+            'is_new_user': true,
+            'registration_token': 'reg_tok_abc',
+          },
+        },
+        codes: {ApiEndpoints.verifyOtp: 10017},
+      );
+      final ds = AuthRemoteDataSource(client: client);
+
+      final result = await ds.verifyOtp(
+        phone: '13812345678',
+        otp: '123456',
+      );
+
+      expect(result, isA<VerifyOtpNeedProfile>());
+      expect((result as VerifyOtpNeedProfile).registrationToken, 'reg_tok_abc');
     });
   });
 }
