@@ -123,11 +123,11 @@ class ReviewReportPage extends StatelessWidget {
                             ? Colors.white.withOpacity(0.15)
                             : AppColors.border),
 
-                    // 用时
+                    // 用时（< 60 秒显示"X 秒"，避免短复习显示"0 分钟"）
                     _StatRow(
                       emoji: '⏱️',
                       label: '用时',
-                      value: '${report.durationMinutes} 分钟',
+                      value: report.formattedDuration,
                       color: isGlass ? tc.secondary : AppColors.textSecondary,
                       isGlass: isGlass,
                     ),

@@ -215,6 +215,7 @@ void main() {
         masteredCount: 5,
         partialCount: 3,
         forgotCount: 2,
+        durationSeconds: 900,
         durationMinutes: 15,
         streakDays: 7,
         eliminatedCount: 1,
@@ -224,11 +225,61 @@ void main() {
         masteredCount: 5,
         partialCount: 3,
         forgotCount: 2,
+        durationSeconds: 900,
         durationMinutes: 15,
         streakDays: 7,
         eliminatedCount: 1,
       );
       expect(a, equals(b));
+    });
+
+    test("formattedDuration: < 60 秒显示'X 秒'，>= 60 秒显示'X 分钟'",
+        () {
+      // 守护：修复前 < 60 秒的复习因 inMinutes 截断显示"0 分钟"。
+      expect(const ReviewReportModel(
+        totalCount: 1, masteredCount: 1, partialCount: 0,
+        forgotCount: 0, durationSeconds: 0, streakDays: 0,
+        eliminatedCount: 0,
+      ).formattedDuration, '0 秒');
+      expect(const ReviewReportModel(
+        totalCount: 1, masteredCount: 1, partialCount: 0,
+        forgotCount: 0, durationSeconds: 45, streakDays: 0,
+        eliminatedCount: 0,
+      ).formattedDuration, '45 秒');
+      expect(const ReviewReportModel(
+        totalCount: 1, masteredCount: 1, partialCount: 0,
+        forgotCount: 0, durationSeconds: 60, streakDays: 0,
+        eliminatedCount: 0,
+      ).formattedDuration, '1 分钟');
+      expect(const ReviewReportModel(
+        totalCount: 1, masteredCount: 1, partialCount: 0,
+        forgotCount: 0, durationSeconds: 125, streakDays: 0,
+        eliminatedCount: 0,
+      ).formattedDuration, '2 分钟');
+    });
+
+    test("fromTodaySummary 优先取 duration_seconds，旧后端回退 minutes*60",
+        () {
+      final withSeconds = ReviewReportModel.fromTodaySummary({
+        'total_count': 3,
+        'mastered_count': 2,
+        'partial_count': 1,
+        'failed_count': 0,
+        'duration_seconds': 47,
+        'duration_minutes': 0, // 旧口径会截断为 0
+        'streak_days': 3,
+        'eliminated_count': 1,
+      });
+      expect(withSeconds.durationSeconds, 47);
+      expect(withSeconds.formattedDuration, '47 秒');
+
+      final legacy = ReviewReportModel.fromTodaySummary({
+        'total_count': 1,
+        'mastered_count': 1,
+        'duration_minutes': 2, // 旧后端无 duration_seconds
+      });
+      expect(legacy.durationSeconds, 120);
+      expect(legacy.formattedDuration, '2 分钟');
     });
   });
 

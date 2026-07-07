@@ -123,13 +123,18 @@ func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyL
 }
 
 // TodaySummaryResponse 今日复习汇总响应（首页"查看复习"用）。
-// 字段与前端 ReviewReportModel 对齐：今日复习各评级数、用时（分钟）、
+// 字段与前端 ReviewReportModel 对齐：今日复习各评级数、用时（秒+分钟）、
 // 连续打卡天数、本轮消灭数。今日未复习时各项为 0（前端展示空报告）。
+//
+// 用时同时返回秒（duration_seconds）与分钟（duration_minutes）：分钟由秒整除得，
+// 丢弃 < 60 秒精度，历史上导致短复习显示"0 分钟"。前端按 duration_seconds 自行
+// 格式化（< 60 秒显示"X 秒"），duration_minutes 保留向后兼容。
 type TodaySummaryResponse struct {
 	TotalCount      int    `json:"total_count"`
 	MasteredCount   int    `json:"mastered_count"`
 	PartialCount    int    `json:"partial_count"`
 	FailedCount     int    `json:"failed_count"`
+	DurationSeconds int    `json:"duration_seconds"`
 	DurationMinutes int    `json:"duration_minutes"`
 	StreakDays      int    `json:"streak_days"`
 	EliminatedCount int    `json:"eliminated_count"`
@@ -157,6 +162,7 @@ func (s *ReviewService) GetTodaySummary(ctx context.Context, userID int64) (*Tod
 		MasteredCount:   summary.MasteredCount,
 		PartialCount:    summary.PartialCount,
 		FailedCount:     summary.FailedCount,
+		DurationSeconds: summary.DurationSec,
 		DurationMinutes: summary.DurationSec / 60,
 		StreakDays:      streakDays,
 		EliminatedCount: summary.EliminatedCount,

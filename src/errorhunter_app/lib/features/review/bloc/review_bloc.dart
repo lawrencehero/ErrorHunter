@@ -228,8 +228,10 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
   ) async {
     _undoTimer?.cancel();
 
-    final duration = _startTime != null
-        ? DateTime.now().difference(_startTime!).inMinutes
+    // 用会话墙钟秒数计用时（精确到秒），避免 inMinutes 截断导致 < 60 秒的短复习
+    // 显示"0 分钟"。展示层 formattedDuration 按 < 60 秒显示"X 秒"。
+    final durationSeconds = _startTime != null
+        ? DateTime.now().difference(_startTime!).inSeconds
         : 0;
 
     var mastered = 0;
@@ -254,7 +256,8 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
       masteredCount: mastered,
       partialCount: partial,
       forgotCount: forgot,
-      durationMinutes: duration,
+      durationSeconds: durationSeconds,
+      durationMinutes: durationSeconds ~/ 60,
       streakDays: streakDays,
       eliminatedCount: _eliminatedInSession,
     )));
