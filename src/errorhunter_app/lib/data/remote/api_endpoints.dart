@@ -21,6 +21,7 @@ class ApiEndpoints {
   static const String questionPermanentDelete = '/questions/{id}/permanent';
   static const String recycleBin = '/questions/recycle-bin';
   static const String recycleBinClear = '/questions/recycle-bin/clear';
+  static const String questionTags = '/questions/tags';
 
   // ─── Knowledge Points ───────────────────────────────────
   static const String knowledgePoints = '/knowledge-points';
@@ -29,6 +30,7 @@ class ApiEndpoints {
   static const String reviews = '/reviews';
   static const String reviewQueue = '/reviews/queue';
   static const String reviewResult = '/reviews/result';
+  static const String reviewTodaySummary = '/reviews/today-summary';
 
   // ─── Reports ─────────────────────────────────────────────
   static const String reports = '/reports';

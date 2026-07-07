@@ -63,7 +63,8 @@ ErrorHunter/
 │       ├── user/SKILL.md            # /user 用户单独发言
 │       ├── walkthrough/SKILL.md     # /walkthrough 模拟走查
 │       ├── real-device/SKILL.md     # /real-device 真机 checklist
-│       └── heuristic/SKILL.md       # /heuristic UX 启发式评估
+│       ├── heuristic/SKILL.md       # /heuristic UX 启发式评估
+│       └── user-activity/SKILL.md   # /user-activity 查询用户当前活动记录
 ├── docs/
 │   ├── README.md
 │   ├── 01-需求分析/
@@ -99,6 +100,7 @@ ErrorHunter/
 | `/walkthrough 功能` | 模拟用户逐步走查 App | 发现 UI/交互/状态 bug |
 | `/real-device 功能` | 真机专属 Checklist 排查 | 设备碎片化、手势、键盘、生命周期 |
 | `/heuristic 功能` | UX 启发式评估（14 条原则） | 系统性发现体验类问题 |
+| `/user-activity 手机号\|id\|all [prod]` | 查询用户学习活动记录（单用户明细或全局概览） | 客服排查、PM 抽查用户健康度、整体活跃度盘点 |
 
 ---
 

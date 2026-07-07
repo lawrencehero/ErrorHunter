@@ -20,6 +20,7 @@ class QuestionRemoteDataSource {
     String? category,
     String? status,
     String? knowledgePointId,
+    String? tag,
     int page = 1,
   }) async {
     final queryParams = <String, dynamic>{
@@ -27,6 +28,7 @@ class QuestionRemoteDataSource {
       if (category != null) 'error_category': category,
       if (status != null) 'status': status,
       if (knowledgePointId != null) 'knowledge_point_id': knowledgePointId,
+      if (tag != null) 'tag': tag,
     };
 
     final response = await _client.get<Map<String, dynamic>>(
@@ -41,6 +43,17 @@ class QuestionRemoteDataSource {
         .map((item) =>
             QuestionModel.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  /// 获取当前用户错题的去重自定义标签列表
+  Future<List<String>> getTags() async {
+    final response = await _client.get<Map<String, dynamic>>(
+      ApiEndpoints.questionTags,
+    );
+
+    final data = response.data?['data'] as Map<String, dynamic>?;
+    final list = data?['tags'] as List<dynamic>? ?? [];
+    return list.map((e) => e.toString()).toList();
   }
 
   /// 搜索错题

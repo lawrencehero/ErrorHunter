@@ -21,6 +21,7 @@ class MockQuestionRepository implements QuestionRepository {
     ErrorCategory? category,
     QuestionStatus? status,
     String? knowledgePointId,
+    String? tag,
     int page = 1,
   }) async {
     if (category != null) {
@@ -31,6 +32,9 @@ class MockQuestionRepository implements QuestionRepository {
     }
     return mockQuestions;
   }
+
+  @override
+  Future<List<String>> getTags() async => [];
 
   @override
   Future<List<QuestionModel>> searchQuestions(String keyword) async {
@@ -330,15 +334,89 @@ void main() {
     });
   });
 
-  group("QuestionModel", () {
-    test("reviewProgress calculates correctly", () {
-      final q = createMockQuestion().copyWith(
-        currentReviewRound: 3,
-        totalReviewRounds: 5,
-      );
-      expect(q.reviewProgress, closeTo(0.6, 0.01));
+  group("QuestionModel 复习本数据一致性", () {
+    test("复习进度 = masterCount/3，与消灭阈值一致", () {
+      // mc=0 → 0%（新题从未复习也非 20%）
+      expect(createMockQuestion().copyWith(masterCount: 0).reviewProgress, 0.0);
+      expect(createMockQuestion().copyWith(masterCount: 1).reviewProgress, closeTo(0.33, 0.01));
+      expect(createMockQuestion().copyWith(masterCount: 2).reviewProgress, closeTo(0.67, 0.01));
+      // mc=3 → 100%（消灭）
+      expect(createMockQuestion().copyWith(masterCount: 3).reviewProgress, 1.0);
     });
 
+    test("新题复习进度为 0（不受 review_round=1 影响）", () {
+      // 新题 review_round=1、master_count=0：进度必须为 0，不能因轮次号=1 显示 20%。
+      final q = createMockQuestion().copyWith(
+        currentReviewRound: 1,
+        masterCount: 0,
+        status: QuestionStatus.notStarted,
+      );
+      expect(q.reviewProgress, 0.0);
+      expect(q.isEliminated, isFalse);
+    });
+
+    test("已消灭题复习进度为 100%（与状态一致，不再 80%）", () {
+      // 消灭发生在 round=4 / mc=3：进度必须 100%，不能因 round/5=80% 矛盾。
+      final q = createMockQuestion().copyWith(
+        currentReviewRound: 4,
+        masterCount: 3,
+        status: QuestionStatus.mastered,
+      );
+      expect(q.isEliminated, isTrue);
+      expect(q.reviewProgress, 1.0);
+    });
+
+    test("isEliminated: mastered / permanentlyMastered 为 true，其余 false", () {
+      expect(createMockQuestion().copyWith(status: QuestionStatus.mastered).isEliminated, isTrue);
+      expect(createMockQuestion().copyWith(status: QuestionStatus.permanentlyMastered).isEliminated, isTrue);
+      expect(createMockQuestion().copyWith(status: QuestionStatus.notStarted).isEliminated, isFalse);
+      expect(createMockQuestion().copyWith(status: QuestionStatus.reviewing).isEliminated, isFalse);
+    });
+
+    test("reviewCount 与 currentReviewRound 区分：复习1次的题 round=2 但 count=1", () {
+      // 复习1次 MASTERED 后：review_round=2、master_count=1、review_count=1。
+      // 列表"📖 N次"应显示 1（reviewCount），不能显示 2（轮次号）。
+      final q = createMockQuestion().copyWith(
+        currentReviewRound: 2,
+        masterCount: 1,
+        reviewCount: 1,
+        status: QuestionStatus.reviewing,
+      );
+      expect(q.reviewCount, 1);
+      expect(q.currentReviewRound, 2);
+      expect(q.reviewProgress, closeTo(0.33, 0.01));
+    });
+
+    test("fromJson 解析 review_count；缺失时回退 0", () {
+      final base = createMockQuestion().toJson();
+      base['review_count'] = 5;
+      final q = QuestionModel.fromJson(base);
+      expect(q.reviewCount, 5);
+      base.remove('review_count');
+      expect(QuestionModel.fromJson(base).reviewCount, 0);
+    });
+
+    test("toJson 回写 review_count", () {
+      final q = createMockQuestion().copyWith(reviewCount: 7);
+      expect(q.toJson()['review_count'], 7);
+    });
+
+    test("复习历史轮次编号 = record.review_round（每条记录的复习时轮次）", () {
+      // 3 次 MASTERED 复习对应记录轮次 1/2/3；题当前 review_round=4（下一待复习轮次）。
+      // 历史最大轮次(3) < 当前轮次(4)，且消灭进度 100%——三处数据互不矛盾。
+      final q = createMockQuestion().copyWith(
+        currentReviewRound: 4,
+        masterCount: 3,
+        status: QuestionStatus.mastered,
+        reviewCount: 3,
+      );
+      expect(q.reviewCount, 3); // 历史记录数 = 复习次数
+      expect(q.currentReviewRound, 4); // 下一待复习轮次
+      expect(q.reviewProgress, 1.0); // 已消灭
+    });
+  });
+
+  group("QuestionModel", () {
     test("isEliminated returns true for mastered", () {
       final q = createMockQuestion().copyWith(status: QuestionStatus.mastered);
       expect(q.isEliminated, isTrue);

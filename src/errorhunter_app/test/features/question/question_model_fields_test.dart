@@ -95,6 +95,23 @@ void main() {
     });
   });
 
+  group("next_review_date 解析", () {
+    test("后端返回的 next_review_date（UTC 午夜时间戳）被解析", () {
+      final j = _baseJson();
+      j["next_review_date"] = "2026-07-13T00:00:00Z";
+      final q = QuestionModel.fromJson(j);
+      expect(q.nextReviewDate, isNotNull);
+      // 日期语义：按 UTC 取月/日，应为 7/13。
+      expect(q.nextReviewDate!.month, 7);
+      expect(q.nextReviewDate!.day, 13);
+    });
+
+    test("缺省时为 null", () {
+      final q = QuestionModel.fromJson(_baseJson());
+      expect(q.nextReviewDate, isNull);
+    });
+  });
+
   group("QuestionDetailLoaded 状态重建", () {
     test("更新后 question 内容变化触发 Equatable 不相等（props 含完整 question）",
         () {

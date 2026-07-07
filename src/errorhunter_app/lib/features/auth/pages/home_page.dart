@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../di/injection.dart';
+import '../../../domain/repositories/review_repository.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/gradients.dart';
@@ -596,33 +598,49 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 18),
-          // 按钮
-          GestureDetector(
-            onTap: () => context.go(Routes.review),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                gradient: AppGradients.primary,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: isGlass ? null : [
-                  BoxShadow(color: AppColors.brandPrimaryDark, offset: const Offset(0, 4), blurRadius: 0),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                  const SizedBox(width: 6),
-                  Text('开始复习',
-                    style: AppTypography.primary.button.copyWith(
-                      color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800,
+          // 按钮：今日待复习数为 0（今日任务已完成）时变"查看复习"，
+          // 拉取今日复习汇总展示真实结果数据（今日复习过则非零，未复习则全零）。
+          (() {
+            final done = dashboard.pendingReviewCount == 0;
+            return GestureDetector(
+              onTap: () async {
+                if (!done) {
+                  context.go(Routes.review);
+                  return;
+                }
+                final report = await sl<ReviewRepository>().getTodaySummary();
+                if (!context.mounted) return;
+                context.go(Routes.reviewReport, extra: report);
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  gradient: AppGradients.primary,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: isGlass ? null : [
+                    BoxShadow(color: AppColors.brandPrimaryDark, offset: const Offset(0, 4), blurRadius: 0),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      done ? Icons.menu_book_rounded : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 22,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Text(done ? '查看复习' : '开始复习',
+                      style: AppTypography.primary.button.copyWith(
+                        color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          })(),
         ],
       ),
     );

@@ -34,6 +34,7 @@ class QuestionListLoaded extends QuestionState {
     this.filterStatus,
     this.filterCategory,
     this.filterKnowledgePoint,
+    this.filterTag,
     this.searchKeyword = '',
   });
 
@@ -43,6 +44,7 @@ class QuestionListLoaded extends QuestionState {
   final QuestionStatus? filterStatus;
   final ErrorCategory? filterCategory;
   final String? filterKnowledgePoint;
+  final String? filterTag;
   final String searchKeyword;
 
   @override
@@ -53,6 +55,7 @@ class QuestionListLoaded extends QuestionState {
         filterStatus,
         filterCategory,
         filterKnowledgePoint,
+        filterTag,
         searchKeyword,
       ];
 }

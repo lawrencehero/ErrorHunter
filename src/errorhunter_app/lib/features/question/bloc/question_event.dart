@@ -19,6 +19,7 @@ class LoadQuestions extends QuestionEvent {
     this.status,
     this.category,
     this.knowledgePointId,
+    this.tag,
     this.page = 1,
     this.pageSize = 20,
     this.refresh = false,
@@ -27,13 +28,14 @@ class LoadQuestions extends QuestionEvent {
   final QuestionStatus? status;
   final ErrorCategory? category;
   final String? knowledgePointId;
+  final String? tag;
   final int page;
   final int pageSize;
   final bool refresh;
 
   @override
   List<Object?> get props =>
-      [status, category, knowledgePointId, page, pageSize, refresh];
+      [status, category, knowledgePointId, tag, page, pageSize, refresh];
 }
 
 /// 搜索错题
@@ -74,6 +76,16 @@ class FilterByKnowledgePoint extends QuestionEvent {
 
   @override
   List<Object?> get props => [knowledgePointId];
+}
+
+/// 按自定义标签筛选
+class FilterByTag extends QuestionEvent {
+  const FilterByTag(this.tag);
+
+  final String? tag;
+
+  @override
+  List<Object?> get props => [tag];
 }
 
 /// 加载错题详情

@@ -19,6 +19,7 @@ class QuestionRepositoryMock implements QuestionRepository {
     ErrorCategory? category,
     QuestionStatus? status,
     String? knowledgePointId,
+    String? tag,
     int page = 1,
   }) async {
     await Future.delayed(const Duration(milliseconds: 800));
@@ -38,8 +39,22 @@ class QuestionRepositoryMock implements QuestionRepository {
               q.knowledgePoints.any((kp) => kp.id == knowledgePointId))
           .toList();
     }
+    if (tag != null) {
+      questions = questions.where((q) => q.customTags.contains(tag)).toList();
+    }
 
     return questions;
+  }
+
+  @override
+  Future<List<String>> getTags() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final all = _dataSource.getQuestions();
+    final tags = <String>{};
+    for (final q in all) {
+      tags.addAll(q.customTags);
+    }
+    return tags.toList()..sort();
   }
 
   @override

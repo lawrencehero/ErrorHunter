@@ -82,6 +82,11 @@ func (h *QuestionHandler) List(c *gin.Context) {
 		filter.EndDate = &endDate
 	}
 
+	// 自定义标签筛选
+	if tag := c.Query("tag"); tag != "" {
+		filter.Tag = &tag
+	}
+
 	result, err := h.questionService.List(c.Request.Context(), userID, filter)
 	if err != nil {
 		if appErr, ok := err.(*errcode.AppError); ok {
@@ -93,6 +98,28 @@ func (h *QuestionHandler) List(c *gin.Context) {
 	}
 
 	respondSuccess(c, result)
+}
+
+// GetTags 获取当前用户错题的去重自定义标签列表
+// GET /questions/tags
+func (h *QuestionHandler) GetTags(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		respondError(c, errcode.EUnauthorized)
+		return
+	}
+
+	tags, err := h.questionService.ListTags(c.Request.Context(), userID)
+	if err != nil {
+		if appErr, ok := err.(*errcode.AppError); ok {
+			respondError(c, appErr)
+		} else {
+			respondError(c, errcode.EInternalServer)
+		}
+		return
+	}
+
+	respondSuccess(c, gin.H{"tags": tags})
 }
 
 // Create 创建错题

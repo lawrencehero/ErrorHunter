@@ -318,6 +318,11 @@ func (s *QuestionService) GetByID(ctx context.Context, id, userID int64) (*model
 		} else {
 			question.ReviewRecords = records
 		}
+		// 累计复习次数（全部 review_records 行数，非仅最近 N 条），
+		// 供详情页与列表一致展示"复习次数"。
+		if cnt, cerr := s.reviewRepo.CountByQuestion(ctx, question.ID); cerr == nil {
+			question.ReviewCount = cnt
+		}
 	}
 	return question, nil
 }
@@ -330,6 +335,7 @@ type ListFilter struct {
 	StartDate        *string
 	EndDate          *string
 	Keyword          string
+	Tag              *string // 自定义标签筛选
 	SortBy           string
 	SortOrder        string
 	Page             int
@@ -398,6 +404,9 @@ func (s *QuestionService) List(ctx context.Context, userID int64, filter ListFil
 
 	repoFilter.KnowledgePointID = filter.KnowledgePointID
 
+	// 自定义标签筛选透传
+	repoFilter.Tag = filter.Tag
+
 	// 日期筛选：handler 读到的 start_date / end_date 是字符串（YYYY-MM-DD），
 	// repo 期望 *time.Time。原代码漏了这一段映射，导致日期筛选完全失效。
 	// 解析逻辑抽到 parseDateFilter 便于单测。
@@ -409,6 +418,7 @@ func (s *QuestionService) List(ctx context.Context, userID int64, filter ListFil
 	}
 
 	fillTotalReviewRoundsBatch(result.List)
+	fillReviewCountBatch(s.reviewRepo, result.List)
 	return &ListResult{
 		List: result.List,
 		Pagination: Pagination{
@@ -417,6 +427,18 @@ func (s *QuestionService) List(ctx context.Context, userID int64, filter ListFil
 			Total:    result.Total,
 		},
 	}, nil
+}
+
+// ListTags 返回该用户所有错题的去重自定义标签，供错题本标签筛选下拉使用。
+func (s *QuestionService) ListTags(ctx context.Context, userID int64) ([]string, error) {
+	tags, err := s.questionRepo.GetDistinctTags(ctx, userID)
+	if err != nil {
+		return nil, errcode.EInternalServer
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	return tags, nil
 }
 
 // UpdateRequest 更新错题请求
@@ -537,6 +559,7 @@ func (s *QuestionService) ListRecycleBin(ctx context.Context, userID int64, page
 	}
 
 	fillTotalReviewRoundsBatch(result.List)
+	fillReviewCountBatch(s.reviewRepo, result.List)
 	return &ListResult{
 		List: result.List,
 		Pagination: Pagination{
@@ -593,6 +616,45 @@ func fillTotalReviewRoundsBatch(qs []model.Question) {
 func fillTotalReviewRoundsPtrs(qs []*model.Question) {
 	for _, q := range qs {
 		fillTotalReviewRounds(q)
+	}
+}
+
+// fillReviewCountBatch 批量填充 ReviewCount（累计复习次数）。
+// reviewRepo 为 nil（旧调用方/测试）时跳过，前端回退 0。避免 N+1：单次 GROUP BY 查询。
+func fillReviewCountBatch(reviewRepo *repository.ReviewRecordRepository, qs []model.Question) {
+	if reviewRepo == nil || len(qs) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(qs))
+	for i := range qs {
+		ids = append(ids, qs[i].ID)
+	}
+	counts, err := reviewRepo.CountByQuestions(context.Background(), ids)
+	if err != nil {
+		log.Printf("[WARN] CountByQuestions failed: %v", err)
+		return
+	}
+	for i := range qs {
+		qs[i].ReviewCount = counts[qs[i].ID]
+	}
+}
+
+// fillReviewCountPtrs 批量指针版本（复习队列用）。
+func fillReviewCountPtrs(reviewRepo *repository.ReviewRecordRepository, qs []*model.Question) {
+	if reviewRepo == nil || len(qs) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(qs))
+	for _, q := range qs {
+		ids = append(ids, q.ID)
+	}
+	counts, err := reviewRepo.CountByQuestions(context.Background(), ids)
+	if err != nil {
+		log.Printf("[WARN] CountByQuestions failed: %v", err)
+		return
+	}
+	for _, q := range qs {
+		q.ReviewCount = counts[q.ID]
 	}
 }
 

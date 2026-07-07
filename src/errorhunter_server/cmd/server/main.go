@@ -184,6 +184,7 @@ func main() {
 				questions.POST("", questionHandler.Create)
 				questions.GET("/recycle-bin", questionHandler.ListRecycleBin)
 				questions.DELETE("/recycle-bin/clear", questionHandler.ClearRecycleBin)
+				questions.GET("/tags", questionHandler.GetTags)
 				questions.GET("/:id", questionHandler.GetByID)
 				questions.PUT("/:id", questionHandler.Update)
 				questions.DELETE("/:id", questionHandler.Delete)
@@ -202,6 +203,7 @@ func main() {
 			{
 				reviews.GET("/queue", reviewHandler.GetQueue)
 				reviews.POST("/result", reviewHandler.SubmitResult)
+				reviews.GET("/today-summary", reviewHandler.GetTodaySummary)
 				reviews.GET("", reviewHandler.GetHistory)
 			}
 

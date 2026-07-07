@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/errorhunter/errorhunter-server/internal/middleware"
 	"github.com/errorhunter/errorhunter-server/internal/pkg/errcode"
@@ -21,7 +22,9 @@ func NewReviewHandler(reviewService *service.ReviewService, userRepo *repository
 }
 
 // GetQueue 获取今日复习队列
-// GET /reviews/queue
+// GET /reviews/queue?question_ids=1,2,3
+// question_ids 非空时为单题/指定题复习入口：仅返回这些题（不限 due、不限每日上限），
+// 供错题详情页"开始复习此题"使用。提交仍走 POST /reviews/result，正常推进艾宾浩斯计划。
 func (h *ReviewHandler) GetQueue(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	if userID == 0 {
@@ -40,7 +43,21 @@ func (h *ReviewHandler) GetQueue(c *gin.Context) {
 		}
 	}
 
-	queue, err := h.reviewService.GetReviewQueue(c.Request.Context(), userID, dailyLimit)
+	// 解析 question_ids（逗号分隔），非法片段忽略。仅单题复习入口使用。
+	var questionIDs []int64
+	if idsStr := c.Query("question_ids"); idsStr != "" {
+		for _, part := range strings.Split(idsStr, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if id, err := strconv.ParseInt(part, 10, 64); err == nil {
+				questionIDs = append(questionIDs, id)
+			}
+		}
+	}
+
+	queue, err := h.reviewService.GetReviewQueue(c.Request.Context(), userID, dailyLimit, questionIDs)
 	if err != nil {
 		if appErr, ok := err.(*errcode.AppError); ok {
 			respondError(c, appErr)
@@ -79,6 +96,29 @@ func (h *ReviewHandler) SubmitResult(c *gin.Context) {
 	}
 
 	respondSuccess(c, resp)
+}
+
+// GetTodaySummary 获取今日复习汇总
+// GET /reviews/today-summary
+// 供首页"查看复习"展示今日真实复习结果数据（而非空报告全零）。
+func (h *ReviewHandler) GetTodaySummary(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		respondError(c, errcode.EUnauthorized)
+		return
+	}
+
+	summary, err := h.reviewService.GetTodaySummary(c.Request.Context(), userID)
+	if err != nil {
+		if appErr, ok := err.(*errcode.AppError); ok {
+			respondError(c, appErr)
+		} else {
+			respondError(c, errcode.EInternalServer)
+		}
+		return
+	}
+
+	respondSuccess(c, summary)
 }
 
 // GetHistory 获取复习历史

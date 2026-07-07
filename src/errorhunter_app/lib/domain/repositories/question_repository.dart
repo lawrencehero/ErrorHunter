@@ -12,8 +12,12 @@ abstract class QuestionRepository {
     ErrorCategory? category,
     QuestionStatus? status,
     String? knowledgePointId,
+    String? tag,
     int page = 1,
   });
+
+  /// 获取当前用户错题的去重自定义标签列表
+  Future<List<String>> getTags();
 
   /// 搜索错题
   Future<List<QuestionModel>> searchQuestions(String keyword);

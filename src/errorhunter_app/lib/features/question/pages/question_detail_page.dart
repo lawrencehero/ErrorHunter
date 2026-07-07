@@ -4,8 +4,11 @@ library;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/theme_manager.dart';
+import '../../../theme/gradients.dart';
 import '../../../theme/radius.dart';
 import '../../../theme/spacing.dart';
 import '../../../theme/typography.dart';
@@ -15,11 +18,11 @@ import '../../../widgets/common/chips/filter_chip.dart';
 import '../../../widgets/common/chips/status_chip.dart';
 import '../../../widgets/common/dialogs/confirm_dialog.dart';
 import '../../../widgets/common/dialogs/toast.dart';
+import '../../../widgets/common/icons/eliminated_check_icon.dart';
 import '../bloc/question_bloc.dart';
 import '../bloc/question_event.dart';
 import '../bloc/question_state.dart';
 import '../models/question_model.dart';
-import '../widgets/math_text.dart';
 import '../widgets/image_preview.dart';
 import '../widgets/review_history_timeline.dart';
 import '../widgets/review_progress_bar.dart';
@@ -326,7 +329,9 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   SizedBox(height: AppSpacing.lg),
                 ],
 
-                // ── OCR Text ───────────────────────────────────
+                // ── OCR Text (仅编辑态) ──────────────────────
+                // 非编辑态不再展示识别文字：原图已包含题目内容，重复显示无意义。
+                // 编辑态保留输入框，便于订正 OCR 文本（仍用于搜索）。
                 if (_isEditMode)
                   TextField(
                     controller: _ocrController,
@@ -336,21 +341,16 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       border: OutlineInputBorder(borderRadius: AppRadius.radiusMd),
                       contentPadding: AppSpacing.cardInnerPadding,
                     ),
-                  )
-                else if (question.ocrText != null && question.ocrText!.isNotEmpty)
-                  MathText(
-                    question.ocrText!,
-                    style: AppTypography.primary.body.copyWith(color: tc.primary),
-                    mathStyle: AppTypography.primary.body.copyWith(color: tc.primary),
                   ),
 
                 SizedBox(height: AppSpacing.lg),
 
                 // ── Review Progress ────────────────────────────
                 ReviewProgressBar(
-                  currentRound: question.currentReviewRound,
-                  totalRounds: question.totalReviewRounds,
+                  masterCount: question.masterCount,
+                  isEliminated: question.isEliminated,
                   height: 6,
+                  nextReviewDate: question.nextReviewDate,
                 ),
 
                 SizedBox(height: AppSpacing.md),
@@ -495,7 +495,12 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   sectionId: 'history',
                   title: '复习历史',
                   icon: Icons.history_rounded,
-                  child: ReviewHistoryTimeline(records: question.reviewHistory),
+                  // 折叠态下也可见总轮次；展开后由时间线直接列各轮记录，不重复标题。
+                  trailing: _reviewRoundBadge(question),
+                  child: ReviewHistoryTimeline(
+                    records: question.reviewHistory,
+                    totalReviewCount: question.reviewCount,
+                  ),
                 ),
 
                 SizedBox(height: AppSpacing.lg),
@@ -559,22 +564,15 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                       ],
               ),
               child: question.isEliminated
-                  ? EHPrimaryButton(
-                      text: '已消灭 ✅',
-                      onPressed: null,
-                      fullWidth: true,
-                      size: EHButtonSize.lg,
-                      enabled: false,
-                    )
+                  ? _buildEliminatedButton(isGlass)
                   : EHPrimaryButton(
                       text: '开始复习此题',
                       onPressed: () {
-                        // TODO: 单题复习功能开发中，后续接入 Routes.review
-                        EHToast.show(
-                          context,
-                          message: '单题复习功能开发中，请使用复习模块进行复习',
-                          type: EHToastType.info,
-                        );
+                        // 单题复习：进入仅含该题的复习流程，复用正常复习提交，
+                        // 自评后推进艾宾浩斯计划、更新复习统计（不影响其他题）。
+                        context.go(Routes.review, extra: {
+                          'questionIds': [question.id],
+                        });
                       },
                       fullWidth: true,
                       size: EHButtonSize.lg,
@@ -588,11 +586,15 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   /// Bug #28: 可折叠区块组件
+  ///
+  /// [trailing] 标题行尾部、折叠箭手左侧的附加内容（如复习历史"共 N 轮"），
+  /// 在折叠态下也可见，便于不展开即可看汇总。
   Widget _buildCollapsibleSection({
     required String sectionId,
     required String title,
     required IconData icon,
     required Widget child,
+    Widget? trailing,
   }) {
     final tc = context.textColors;
     final isGlass = context.themeExt.isDarkBackground;
@@ -623,6 +625,10 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
                   title,
                   style: AppTypography.primary.h3.copyWith(color: tc.primary),
                 ),
+                if (trailing != null) ...[
+                  SizedBox(width: AppSpacing.sm),
+                  trailing,
+                ],
                 const Spacer(),
                 AnimatedRotation(
                   turns: isExpanded ? 0.5 : 0,
@@ -653,7 +659,74 @@ class _QuestionDetailPageState extends State<QuestionDetailPage> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+    // created_at 带时区偏移，DateTime.parse 得到 UTC DateTime；先转本地再取日期，
+    // 避免凌晨前后的题目录入日期跨天错位（如本地 6/28 00:30 显示成 6/27）。
+    final local = date.toLocal();
+    return '${local.year}/${local.month.toString().padLeft(2, '0')}/${local.day.toString().padLeft(2, '0')}';
+  }
+
+  /// 已消灭态底部按钮：success 渐变 + chunky 底影（与主按钮同款），配带质感的
+  /// 勾选徽标，呈现"完成"的庆祝感，替代原先禁用淡蓝按钮 + ✅ emoji。
+  Widget _buildEliminatedButton(bool isGlass) {
+    return Container(
+      height: 56,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: AppGradients.success,
+        borderRadius: AppRadius.radiusLg,
+        boxShadow: [
+          BoxShadow(
+            color: AppGradients.successDark,
+            offset: const Offset(0, 3),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          EliminatedCheckIcon(size: 24, isGlass: isGlass),
+          SizedBox(width: AppSpacing.xs),
+          Text(
+            '已消灭',
+            style: AppTypography.primary.button.copyWith(
+              fontSize: 18,
+              color: Colors.white,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 复习历史标题行的"共 N 轮"徽标。
+  /// 取累计复习次数（后端 review_count）；为 0（mock/旧缓存）时回退记录条数。
+  /// 无任何复习记录时返回 null，不展示徽标。
+  Widget? _reviewRoundBadge(QuestionModel question) {
+    final count = question.reviewCount > 0
+        ? question.reviewCount
+        : question.reviewHistory.length;
+    if (count == 0) return null;
+    final tc = context.textColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        // ignore: deprecated_member_use
+        color: tc.tertiary.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '共 $count 轮',
+        style: AppTypography.primary.caption.copyWith(
+          color: tc.secondary,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
   }
 
   /// 通用网络图片组件，带 loading 和 error 状态

@@ -81,4 +81,19 @@ class ReviewReportModel extends Equatable {
       eliminatedCount: 0,
     );
   }
+
+  /// 由后端今日复习汇总（GET /v1/reviews/today-summary）构造。
+  /// 今日未复习时各项为 0，等价于 empty；今日复习过则展示真实结果数据。
+  /// failed_count 映射到 forgotCount（"完全不会"）。
+  factory ReviewReportModel.fromTodaySummary(Map<String, dynamic> json) {
+    return ReviewReportModel(
+      totalCount: (json['total_count'] as num?)?.toInt() ?? 0,
+      masteredCount: (json['mastered_count'] as num?)?.toInt() ?? 0,
+      partialCount: (json['partial_count'] as num?)?.toInt() ?? 0,
+      forgotCount: (json['failed_count'] as num?)?.toInt() ?? 0,
+      durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 0,
+      streakDays: (json['streak_days'] as num?)?.toInt() ?? 0,
+      eliminatedCount: (json['eliminated_count'] as num?)?.toInt() ?? 0,
+    );
+  }
 }

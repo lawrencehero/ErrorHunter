@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/errorhunter/errorhunter-server/internal/model"
@@ -58,6 +60,7 @@ type ListFilter struct {
 	StartDate        *time.Time
 	EndDate          *time.Time
 	Keyword          string
+	Tag              *string // 自定义标签筛选（custom_tags JSONB 包含）
 	SortBy           string // created_at, updated_at
 	SortOrder        string // asc, desc
 	Page             int
@@ -93,6 +96,12 @@ func (r *QuestionRepository) List(ctx context.Context, filter ListFilter) (*List
 	if filter.Keyword != "" {
 		query = query.Where("ocr_text ILIKE ?", "%"+filter.Keyword+"%")
 	}
+	// 自定义标签筛选：custom_tags 是 JSONB 数组，用 @> 包含查询。
+	// 参数化拼成 ["tag"]::jsonb，对 tag 内双引号转义防注入。
+	if filter.Tag != nil && *filter.Tag != "" {
+		escaped := strings.ReplaceAll(*filter.Tag, `"`, `\"`)
+		query = query.Where("custom_tags @> ?::jsonb", fmt.Sprintf(`["%s"]`, escaped))
+	}
 
 	// Count total
 	var total int64
@@ -122,6 +131,40 @@ func (r *QuestionRepository) List(ctx context.Context, filter ListFilter) (*List
 	}
 
 	return &ListResult{List: list, Total: total}, nil
+}
+
+// GetDistinctTags 返回该用户所有错题中去重后的自定义标签集合。
+// 用 jsonb_array_elements_text 把 custom_tags 数组展开成行再 DISTINCT。
+// 跳过 deleted_at IS NOT NULL 的软删题。custom_tags 为空/NULL 的题不产生行。
+func (r *QuestionRepository) GetDistinctTags(ctx context.Context, userID int64) ([]string, error) {
+	var tags []string
+	err := r.db.WithContext(ctx).
+		Raw(`SELECT DISTINCT tag FROM questions, jsonb_array_elements_text(custom_tags) AS tag
+		     WHERE user_id = ? AND deleted_at IS NULL`, userID).
+		Scan(&tags).Error
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+// GetReviewableByIDs 按 ID 批量取可复习的错题（单题复习入口用）。
+// 不限 due 日期、不限每日上限；排除已软删与已永久消灭的题。Preload 知识点，
+// 排序与 GetDueQuestions 一致（review_round DESC, next_review_date ASC）。
+func (r *QuestionRepository) GetReviewableByIDs(ctx context.Context, userID int64, ids []int64) ([]model.Question, error) {
+	list := make([]model.Question, 0)
+	if len(ids) == 0 {
+		return list, nil
+	}
+	err := r.db.WithContext(ctx).
+		Preload("KnowledgePoints").
+		Where("user_id = ? AND id IN ? AND deleted_at IS NULL AND status != ?", userID, ids, model.StatusPermanentlyMastered).
+		Order("review_round DESC, next_review_date ASC").
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
 }
 
 // Update 更新错题

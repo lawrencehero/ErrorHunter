@@ -126,7 +126,9 @@ class QuestionModel extends Equatable {
     this.currentReviewRound = 0,
     this.totalReviewRounds = 5,
     this.masterCount = 0,
+    this.reviewCount = 0,
     this.masteredAt,
+    this.nextReviewDate,
     required this.createdAt,
     this.updatedAt,
     this.deletedAt,
@@ -155,9 +157,19 @@ class QuestionModel extends Equatable {
   /// 真实状态错位（round=3 但 master_count=0 的题会被误判为可消灭）。
   final int masterCount;
 
+  /// 累计复习次数（后端 review_count = review_records 行数）。
+  /// 与 currentReviewRound（轮次号）区分：新题轮次为 1 但复习次数为 0。
+  /// 用于错题本列表"📖 N次"展示，避免把轮次号当复习次数。
+  final int reviewCount;
+
   /// 消灭时间（后端 mastered_at）：用于计算复活检测"已消灭 N 天"。
   /// 可空：未消灭题为 null。
   final DateTime? masteredAt;
+
+  /// 下次复习日期（后端 next_review_date，date 类型，序列化为 UTC 午夜时间戳）。
+  /// 用于详情页复习进度区展示"下次复习 M月D日"。语义为"日期"而非"时刻"，
+  /// 展示时按日期取月/日，不做时区转换。可空：未返回时为 null。
+  final DateTime? nextReviewDate;
 
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -169,8 +181,13 @@ class QuestionModel extends Equatable {
   final String subject;
   final String? grade;
 
-  double get reviewProgress =>
-      totalReviewRounds > 0 ? currentReviewRound / totalReviewRounds : 0.0;
+  /// 复习进度 = 消灭计数 / 3（消灭阈值），与消灭状态一致：
+  /// 新题 mc=0 → 0%；mc=3 → 100%（已消灭）。原用 currentReviewRound/totalRounds
+  /// 会导致已消灭题（round=4）显示 80%、新题（round=1）显示 20%，与状态矛盾。
+  double get reviewProgress => (masterCount / 3).clamp(0.0, 1.0);
+
+  /// 复习进度所需掌握次数（消灭阈值）。
+  static const int masteryThreshold = 3;
 
   /// 错步骤的 0-based 索引（后端 error_step_index）；无错步骤返回 -1（toJson 不输出）。
   int get _errorStepIndex {
@@ -198,7 +215,9 @@ class QuestionModel extends Equatable {
         currentReviewRound,
         totalReviewRounds,
         masterCount,
+        reviewCount,
         masteredAt,
+        nextReviewDate,
         createdAt,
         updatedAt,
         deletedAt,
@@ -220,7 +239,9 @@ class QuestionModel extends Equatable {
     int? currentReviewRound,
     int? totalReviewRounds,
     int? masterCount,
+    int? reviewCount,
     DateTime? masteredAt,
+    DateTime? nextReviewDate,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? deletedAt,
@@ -243,7 +264,9 @@ class QuestionModel extends Equatable {
       currentReviewRound: currentReviewRound ?? this.currentReviewRound,
       totalReviewRounds: totalReviewRounds ?? this.totalReviewRounds,
       masterCount: masterCount ?? this.masterCount,
+      reviewCount: reviewCount ?? this.reviewCount,
       masteredAt: masteredAt ?? this.masteredAt,
+      nextReviewDate: nextReviewDate ?? this.nextReviewDate,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -269,6 +292,7 @@ class QuestionModel extends Equatable {
       'review_round': currentReviewRound,
       'total_review_rounds': totalReviewRounds,
       'master_count': masterCount,
+      'review_count': reviewCount,
       if (masteredAt != null) 'mastered_at': masteredAt!.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
@@ -330,10 +354,19 @@ class QuestionModel extends Equatable {
       // 后端 model.Question.MasterCount（json:"master_count"），默认 0。
       // 复习模块据此判定消灭（>=3），原前端未解析致与后端状态错位。
       masterCount: (json['master_count'] as num?)?.toInt() ?? 0,
+      // 后端 Question.ReviewCount（json:"review_count,omitempty"），列表/详情/
+      // 复习队列均填充。未返回（旧缓存/mock）时回退 0。
+      reviewCount: (json['review_count'] as num?)?.toInt() ?? 0,
       // 后端 model.Question.MasteredAt（json:"mastered_at,omitempty"），
       // 未消灭题为 null；复习模块据此计算复活检测"已消灭 N 天"。
       masteredAt: json['mastered_at'] != null
           ? DateTime.parse(json['mastered_at'] as String)
+          : null,
+      // 后端 model.Question.NextReviewDate（json:"next_review_date"，date 类型，
+      // 序列化为 UTC 午夜时间戳，如 2026-07-13T00:00:00Z）。语义为日期，展示按
+      // 月/日取值。零值（time.Time{}）解析得 0001-01-01，展示层按 year>2000 过滤。
+      nextReviewDate: json['next_review_date'] != null
+          ? DateTime.parse(json['next_review_date'] as String)
           : null,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: json['updated_at'] != null

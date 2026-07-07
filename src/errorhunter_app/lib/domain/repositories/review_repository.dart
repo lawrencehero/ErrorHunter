@@ -3,11 +3,15 @@
 library;
 
 import '../../features/question/models/question_model.dart';
+import '../../features/review/models/review_report_model.dart';
 
 /// 复习仓库抽象
 abstract class ReviewRepository {
   /// 获取复习队列
   Future<List<QuestionModel>> getReviewQueue({List<String>? questionIds});
+
+  /// 获取今日复习汇总（首页"查看复习"展示今日真实结果数据）
+  Future<ReviewReportModel> getTodaySummary();
 
   /// 获取连续打卡天数
   Future<int> getStreakDays();

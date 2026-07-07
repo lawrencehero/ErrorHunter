@@ -74,6 +74,14 @@ class ReviewRemoteDataSource {
     );
   }
 
+  /// 获取今日复习汇总（首页"查看复习"用，展示今日真实结果数据）
+  Future<Map<String, dynamic>> getTodaySummary() async {
+    final response = await _client.get<Map<String, dynamic>>(
+      ApiEndpoints.reviewTodaySummary,
+    );
+    return (response.data?['data'] as Map<String, dynamic>?) ?? {};
+  }
+
   /// 获取连续打卡天数
   Future<int> getStreakDays() async {
     try {

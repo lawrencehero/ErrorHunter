@@ -4,6 +4,7 @@ library;
 
 import '../../domain/repositories/review_repository.dart';
 import '../../features/question/models/question_model.dart';
+import '../../features/review/models/review_report_model.dart';
 import '../remote/review_remote_data_source.dart';
 
 /// Review Repository 的真实实现
@@ -18,6 +19,12 @@ class ReviewRepositoryImpl implements ReviewRepository {
     List<String>? questionIds,
   }) =>
       _dataSource.getReviewQueue(questionIds: questionIds);
+
+  @override
+  Future<ReviewReportModel> getTodaySummary() async {
+    final json = await _dataSource.getTodaySummary();
+    return ReviewReportModel.fromTodaySummary(json);
+  }
 
   @override
   Future<int> getStreakDays() => _dataSource.getStreakDays();

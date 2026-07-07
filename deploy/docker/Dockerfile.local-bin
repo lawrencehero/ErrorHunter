@@ -1,0 +1,22 @@
+# 本地预览用：直接装入宿主交叉编译好的 Linux 二进制，绕过 Docker 内 go mod download 被墙。
+# 与正式 Dockerfile 运行时层保持一致（alpine:3.19 + 非 root 用户 + 健康检查）。
+FROM alpine:3.19
+
+WORKDIR /app
+
+RUN apk add --no-cache ca-certificates tzdata curl && \
+    addgroup -g 1001 -S errorhunter && \
+    adduser -u 1001 -S errorhunter -G errorhunter
+
+COPY server ./server
+COPY configs ./configs
+
+RUN chmod +x ./server && chown -R errorhunter:errorhunter /app
+
+USER errorhunter
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["./server"]

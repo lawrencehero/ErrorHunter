@@ -208,7 +208,11 @@ final GoRouter appRouter = GoRouter(
     // ─── Full-screen Pages ──────────────────────────────
     GoRoute(
       path: Routes.review,
-      builder: (context, state) => _withBackground(const ReviewPage()),
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>? ?? {};
+        final ids = (extra['questionIds'] as List?)?.cast<String>();
+        return _withBackground(ReviewPage(questionIds: ids));
+      },
     ),
     GoRoute(
       path: Routes.reviewReport,

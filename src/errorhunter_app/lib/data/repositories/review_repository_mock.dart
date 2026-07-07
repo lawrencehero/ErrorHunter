@@ -4,6 +4,7 @@ library;
 
 import '../../domain/repositories/review_repository.dart';
 import '../../features/question/models/question_model.dart';
+import '../../features/review/models/review_report_model.dart';
 import '../mock/mock_review_data_source.dart';
 
 /// Review Repository 的 Mock 实现
@@ -19,6 +20,11 @@ class ReviewRepositoryMock implements ReviewRepository {
   }) async {
     await Future.delayed(const Duration(milliseconds: 500));
     return _dataSource.getReviewQueue();
+  }
+
+  @override
+  Future<ReviewReportModel> getTodaySummary() async {
+    return ReviewReportModel.empty();
   }
 
   @override

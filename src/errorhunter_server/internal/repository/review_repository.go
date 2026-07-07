@@ -67,6 +67,43 @@ func (r *ReviewRecordRepository) ListByQuestion(ctx context.Context, questionID 
 	return records, err
 }
 
+// CountByQuestion 单题累计复习次数。
+func (r *ReviewRecordRepository) CountByQuestion(ctx context.Context, questionID int64) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.ReviewRecord{}).
+		Where("question_id = ?", questionID).
+		Count(&count).Error
+	return int(count), err
+}
+
+// CountByQuestions 批量取多题累计复习次数，返回 questionID -> count。
+// 用于错题列表/复习队列批量填充 ReviewCount，避免 N+1。空入参返回空 map。
+func (r *ReviewRecordRepository) CountByQuestions(ctx context.Context, questionIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(questionIDs))
+	if len(questionIDs) == 0 {
+		return result, nil
+	}
+	type row struct {
+		QuestionID int64
+		Count      int
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Model(&model.ReviewRecord{}).
+		Select("question_id, COUNT(*) as count").
+		Where("question_id IN ?", questionIDs).
+		Group("question_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		result[r.QuestionID] = r.Count
+	}
+	return result, nil
+}
+
 // GetStatsByDateRange 获取日期范围内的统计
 type ReviewStats struct {
 	TotalReviews int
@@ -90,4 +127,45 @@ func (r *ReviewRecordRepository) GetStatsByDateRange(ctx context.Context, userID
 		stats.Accuracy = float64(stats.MasteredCount) / float64(stats.TotalReviews) * 100
 	}
 	return &stats, nil
+}
+
+// TodayReviewSummary 今日复习汇总（供首页"查看复习"展示真实结果数据，
+// 而非空报告全零）。区间为 [start, end) 的一天。
+type TodayReviewSummary struct {
+	TotalCount     int   // 今日复习总数（review_records 行数）
+	MasteredCount  int   // 自评 MASTERED 数
+	PartialCount   int   // 自评 PARTIAL 数
+	FailedCount    int   // 自评 FAILED 数
+	DurationSec    int   // 今日复习总用时（秒）
+	EliminatedCount int  // 今日新消灭题数（mastered_at 落在今天的题数）
+}
+
+// GetTodaySummary 聚合用户今日复习汇总。
+//   - 各自评计数与总用时来自 review_records（reviewed_at 在今天）。
+//   - 今日消灭数来自 questions（mastered_at 落在今天的题数，含永久消灭的母题）。
+func (r *ReviewRecordRepository) GetTodaySummary(ctx context.Context, userID int64, start, end time.Time) (*TodayReviewSummary, error) {
+	var s TodayReviewSummary
+	err := r.db.WithContext(ctx).Model(&model.ReviewRecord{}).
+		Where("user_id = ? AND reviewed_at >= ? AND reviewed_at < ?", userID, start, end).
+		Select(`
+			COUNT(*) AS total_count,
+			SUM(CASE WHEN self_rating = 'MASTERED' THEN 1 ELSE 0 END) AS mastered_count,
+			SUM(CASE WHEN self_rating = 'PARTIAL' THEN 1 ELSE 0 END) AS partial_count,
+			SUM(CASE WHEN self_rating = 'FAILED' THEN 1 ELSE 0 END) AS failed_count,
+			COALESCE(SUM(review_duration_sec), 0) AS duration_sec
+		`).
+		Scan(&s).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// 今日消灭数：mastered_at 在今天的题数。
+	var eliminated int64
+	if err := r.db.WithContext(ctx).Model(&model.Question{}).
+		Where("user_id = ? AND mastered_at >= ? AND mastered_at < ?", userID, start, end).
+		Count(&eliminated).Error; err != nil {
+		return nil, err
+	}
+	s.EliminatedCount = int(eliminated)
+	return &s, nil
 }

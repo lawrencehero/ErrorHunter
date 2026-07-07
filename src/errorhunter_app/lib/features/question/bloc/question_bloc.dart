@@ -17,6 +17,7 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
     on<FilterByStatus>(_onFilterByStatus);
     on<FilterByCategory>(_onFilterByCategory);
     on<FilterByKnowledgePoint>(_onFilterByKnowledgePoint);
+    on<FilterByTag>(_onFilterByTag);
     on<LoadQuestionDetail>(_onLoadQuestionDetail);
     on<AddQuestion>(_onAddQuestion);
     on<UpdateQuestion>(_onUpdateQuestion);
@@ -41,6 +42,7 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
         category: event.category,
         status: event.status,
         knowledgePointId: event.knowledgePointId,
+        tag: event.tag,
         page: event.page,
       );
 
@@ -60,6 +62,7 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
         filterStatus: event.status,
         filterCategory: event.category,
         filterKnowledgePoint: event.knowledgePointId,
+        filterTag: event.tag,
       ));
     } catch (e) {
       emit(QuestionError(e.toString()));
@@ -103,6 +106,13 @@ class QuestionBloc extends Bloc<QuestionEvent, QuestionState> {
       knowledgePointId: event.knowledgePointId,
       refresh: true,
     ));
+  }
+
+  Future<void> _onFilterByTag(
+    FilterByTag event,
+    Emitter<QuestionState> emit,
+  ) async {
+    add(LoadQuestions(tag: event.tag, refresh: true));
   }
 
   Future<void> _onLoadQuestionDetail(

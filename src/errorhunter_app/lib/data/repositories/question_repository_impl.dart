@@ -19,15 +19,20 @@ class QuestionRepositoryImpl implements QuestionRepository {
     ErrorCategory? category,
     QuestionStatus? status,
     String? knowledgePointId,
+    String? tag,
     int page = 1,
   }) {
     return _dataSource.getQuestions(
       category: category?.code,
       status: status?.code,
       knowledgePointId: knowledgePointId,
+      tag: tag,
       page: page,
     );
   }
+
+  @override
+  Future<List<String>> getTags() => _dataSource.getTags();
 
   @override
   Future<List<QuestionModel>> searchQuestions(String keyword) =>

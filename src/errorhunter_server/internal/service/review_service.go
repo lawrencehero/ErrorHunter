@@ -48,7 +48,32 @@ type ReviewQueueResponse struct {
 }
 
 // GetReviewQueue 获取今日复习队列
-func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyLimit int) (*ReviewQueueResponse, error) {
+//
+// questionIDs 非空时为单题/指定题复习入口：仅返回这些题（不限 due、不限每日上限、
+// 不取复活检测题），供错题详情页"开始复习此题"使用。提交走 SubmitReview 正常推进计划。
+func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyLimit int, questionIDs []int64) (*ReviewQueueResponse, error) {
+	// 单题复习入口：按指定 ID 取可复习题，跳过 due 判定与每日上限。
+	if len(questionIDs) > 0 {
+		questions, err := s.questionRepo.GetReviewableByIDs(ctx, userID, questionIDs)
+		if err != nil {
+			return nil, errcode.EInternalServer
+		}
+		reviewItems := make([]*model.Question, 0, len(questions))
+		for i := range questions {
+			reviewItems = append(reviewItems, &questions[i])
+		}
+		fillTotalReviewRoundsPtrs(reviewItems)
+		fillReviewCountPtrs(s.reviewRepo, reviewItems)
+		return &ReviewQueueResponse{
+			ReviewItems: reviewItems,
+			ReviveItems: []*model.Question{},
+			TotalCount:  len(reviewItems),
+			ReviveCount: 0,
+			HasMore:     false,
+			OverflowCount: 0,
+		}, nil
+	}
+
 	today := time.Now()
 
 	// 获取待复习题目
@@ -83,6 +108,9 @@ func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyL
 	// 显式填充复习总轮次，避免前端依赖默认值（review_items / revive_items 均为 *model.Question）
 	fillTotalReviewRoundsPtrs(reviewItems)
 	fillTotalReviewRoundsPtrs(reviveItems)
+	// 填充累计复习次数，供复习卡与错题本一致展示。
+	fillReviewCountPtrs(s.reviewRepo, reviewItems)
+	fillReviewCountPtrs(s.reviewRepo, reviveItems)
 
 	return &ReviewQueueResponse{
 		ReviewItems:   reviewItems,
@@ -91,6 +119,47 @@ func (s *ReviewService) GetReviewQueue(ctx context.Context, userID int64, dailyL
 		ReviveCount:   len(reviveItems),
 		HasMore:       overflowCount > 0,
 		OverflowCount: overflowCount,
+	}, nil
+}
+
+// TodaySummaryResponse 今日复习汇总响应（首页"查看复习"用）。
+// 字段与前端 ReviewReportModel 对齐：今日复习各评级数、用时（分钟）、
+// 连续打卡天数、本轮消灭数。今日未复习时各项为 0（前端展示空报告）。
+type TodaySummaryResponse struct {
+	TotalCount      int    `json:"total_count"`
+	MasteredCount   int    `json:"mastered_count"`
+	PartialCount    int    `json:"partial_count"`
+	FailedCount     int    `json:"failed_count"`
+	DurationMinutes int    `json:"duration_minutes"`
+	StreakDays      int    `json:"streak_days"`
+	EliminatedCount int    `json:"eliminated_count"`
+}
+
+// GetTodaySummary 聚合用户今日复习汇总。
+// streak 取 users.streak_days（与 SubmitReview 同源），失败回退 0。
+func (s *ReviewService) GetTodaySummary(ctx context.Context, userID int64) (*TodaySummaryResponse, error) {
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	end := start.Add(24 * time.Hour)
+
+	summary, err := s.reviewRepo.GetTodaySummary(ctx, userID, start, end)
+	if err != nil {
+		return nil, errcode.EInternalServer
+	}
+
+	streakDays := 0
+	if user, err := s.userRepo.FindByID(ctx, userID); err == nil {
+		streakDays = user.StreakDays
+	}
+
+	return &TodaySummaryResponse{
+		TotalCount:      summary.TotalCount,
+		MasteredCount:   summary.MasteredCount,
+		PartialCount:    summary.PartialCount,
+		FailedCount:     summary.FailedCount,
+		DurationMinutes: summary.DurationSec / 60,
+		StreakDays:      streakDays,
+		EliminatedCount: summary.EliminatedCount,
 	}, nil
 }
 

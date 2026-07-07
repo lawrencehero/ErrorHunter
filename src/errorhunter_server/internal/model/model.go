@@ -166,6 +166,12 @@ type Question struct {
 	// omitempty 保证未填充(nil)时不输出，前端回退空复习历史。
 	ReviewRecords []ReviewRecord `gorm:"-" json:"review_records,omitempty"`
 
+	// ReviewCount 该错题累计被复习的次数（= review_records 行数）。
+	// 非持久化：gorm:"-" 不影响 DB 读写；service 返回题目前批量填充。
+	// 用于错题本列表"📖 N次"展示——与 review_round（轮次号）区分，避免把轮次当次数。
+	// omitempty 保证未填充(0)时不输出，前端回退 0。
+	ReviewCount int `gorm:"-" json:"review_count,omitempty"`
+
 	// Associations
 	KnowledgePoints []KnowledgePoint `gorm:"many2many:question_knowledge;" json:"knowledge_points,omitempty"`
 }

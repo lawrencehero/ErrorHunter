@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../di/injection.dart';
 import '../../../domain/repositories/knowledge_point_repository.dart';
+import '../../../domain/repositories/question_repository.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/spacing.dart';
@@ -43,20 +44,26 @@ class _QuestionListPageState extends State<QuestionListPage>
   // Filter state
   ErrorCategory? _filterCategory;
   String? _filterKnowledgePoint;
+  String? _filterTag;
 
   // 知识点下拉项（按年级从后端拉取）
   List<KnowledgePoint> _knowledgePoints = const [];
   bool _kpLoading = true;
 
+  // 自定义标签下拉项（从后端拉取该用户全部错题的去重标签）
+  List<String> _tags = const [];
+  bool _tagsLoading = true;
+
   /// 是否有任意筛选条件不为默认值
   bool get _hasActiveFilters =>
-      _filterCategory != null || _filterKnowledgePoint != null;
+      _filterCategory != null || _filterKnowledgePoint != null || _filterTag != null;
 
   /// 一键重置所有筛选条件
   void _resetFilters() {
     setState(() {
       _filterCategory = null;
       _filterKnowledgePoint = null;
+      _filterTag = null;
     });
     _tabController.removeListener(_onTabChanged);
     _tabController.index = 0;
@@ -81,6 +88,7 @@ class _QuestionListPageState extends State<QuestionListPage>
     // Load initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadKnowledgePoints();
+      _loadTags();
       _applyDeepLink();
     });
   }
@@ -126,6 +134,7 @@ class _QuestionListPageState extends State<QuestionListPage>
           status: status,
           category: _filterCategory,
           knowledgePointId: _filterKnowledgePoint,
+          tag: _filterTag,
           page: page,
           refresh: refresh,
         ));
@@ -149,6 +158,21 @@ class _QuestionListPageState extends State<QuestionListPage>
     } catch (_) {
       if (!mounted) return;
       setState(() => _kpLoading = false);
+    }
+  }
+
+  /// 加载该用户全部错题的去重自定义标签（用于标签下拉）
+  Future<void> _loadTags() async {
+    try {
+      final tags = await sl<QuestionRepository>().getTags();
+      if (!mounted) return;
+      setState(() {
+        _tags = tags;
+        _tagsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _tagsLoading = false);
     }
   }
 
@@ -314,23 +338,26 @@ class _QuestionListPageState extends State<QuestionListPage>
             ),
             SizedBox(width: AppSpacing.sm),
             _FilterDropdown(
-              label: '时间',
-              icon: Icons.access_time_rounded,
-              selectedValue: null,
-              items: const [
-                DropdownMenuItem(value: null, child: Text('全部')),
-                DropdownMenuItem(value: 'today', child: Text('今天')),
-                DropdownMenuItem(value: 'week', child: Text('本周')),
-                DropdownMenuItem(value: 'month', child: Text('本月')),
-              ],
-              onChanged: (_) {
-                // TODO: BLoC 尚不支持时间筛选事件，待后续实现
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('时间筛选即将上线'),
-                    duration: Duration(seconds: 2),
+              label: '标签',
+              icon: Icons.local_offer_outlined,
+              selectedValue: (_tags.any((t) => t == _filterTag))
+                  ? _filterTag
+                  : null,
+              items: [
+                const DropdownMenuItem(value: null, child: Text('全部')),
+                if (_tagsLoading)
+                  const DropdownMenuItem(
+                    enabled: false,
+                    value: '__loading',
+                    child: Text('加载中...'),
                   ),
-                );
+                ..._tags.map(
+                  (t) => DropdownMenuItem(value: t, child: Text(t)),
+                ),
+              ],
+              onChanged: (v) {
+                setState(() => _filterTag = v as String?);
+                _dispatchLoad(status: null);
               },
             ),
             // Bug #27: 一键重置按钮
@@ -495,19 +522,19 @@ class _QuestionTabBodyState extends State<_QuestionTabBody>
             errorCategory: question.errorCategory.code,
             status: question.status.code,
             createdAt: question.createdAt,
-            reviewCount: question.currentReviewRound,
+            reviewCount: question.reviewCount,
           ),
           // 用 push 而非 go：详情页 AppBar 返回/系统返回手势能回到列表，
           // 且 ShellRoute 的 PopScope 不会把返回重定向到首页。
           onTap: () => context.push('${Routes.questions}/${question.id}'),
         ),
-        // Micro progress bar
-        if (question.currentReviewRound > 0)
+        // Micro progress bar：已复习过或已消灭才显示，新题（0 次、未消灭）不显示
+        if (question.reviewCount > 0 || question.isEliminated)
           Padding(
             padding: EdgeInsets.only(top: AppSpacing.xs, left: AppSpacing.xs),
             child: ReviewProgressBar(
-              currentRound: question.currentReviewRound,
-              totalRounds: question.totalReviewRounds,
+              masterCount: question.masterCount,
+              isEliminated: question.isEliminated,
               height: 4,
               showLabel: false,
             ),

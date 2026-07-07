@@ -24,6 +24,10 @@ class MockReviewRepository implements ReviewRepository {
   Future<int> getStreakDays() async => mockStreakDays;
 
   @override
+  Future<ReviewReportModel> getTodaySummary() async =>
+      ReviewReportModel.empty();
+
+  @override
   Future<void> submitReviewResult({
     required String questionId,
     required String selfRating,
