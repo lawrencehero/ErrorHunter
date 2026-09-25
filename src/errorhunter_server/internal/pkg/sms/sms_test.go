@@ -35,24 +35,7 @@ func TestMockProvider_VerifyCode_Invalid(t *testing.T) {
 	}
 }
 
-func TestAliyunProvider_InitClient(t *testing.T) {
-	p := &AliyunProvider{
-		AccessKey:    "test-key",
-		SecretKey:    "test-secret",
-		Endpoint:     "dypnsapi.aliyuncs.com",
-		SignName:     "测试签名",
-		TemplateCode: "100001",
-	}
+// 注：AliyunProvider 改为原生 HTTP 签名（callAPI 内联构造请求，使用 http.DefaultClient），
+// 不再有 initClient/client 字段，故原 InitClient 测试已移除。SendCode/VerifyCode 依赖真实
+// 阿里云 API，在 mock 配置下不便于单元测试，由集成测试覆盖。
 
-	if err := p.initClient(); err != nil {
-		t.Fatalf("initClient failed: %v", err)
-	}
-	if p.client == nil {
-		t.Fatal("client should not be nil after init")
-	}
-
-	// Second call reuses existing client
-	if err := p.initClient(); err != nil {
-		t.Fatalf("second initClient failed: %v", err)
-	}
-}
