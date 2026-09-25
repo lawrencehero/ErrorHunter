@@ -116,7 +116,7 @@ li b{color:#FFD66B;font-weight:700}
     <div class="dl-text">
       <div class="dl-title">📲 扫码下载最新版</div>
       <div class="dl-sub">手机微信/浏览器扫描二维码<br>即可下载安装错题猎手安卓版</div>
-      <div class="dl-url">http://REDACTED_HOST:8081/</div>
+      <div class="dl-url">__DL_URL__/</div>
       <div class="dl-meta">
         <span class="dl-tag">🤖 Android</span>
         <span class="dl-tag">🏷 v1.0.26</span>
@@ -129,7 +129,8 @@ li b{color:#FFD66B;font-weight:700}
 
 HTML = (HTML.replace("__ICON__", ICON_URI)
             .replace("__QR__", QR_URI)
-            .replace("__VERSION__", VERSION))
+            .replace("__VERSION__", VERSION)
+            .replace("__DL_URL__", DOWNLOAD_URL))
 HTML_PATH.write_text(HTML, encoding="utf-8")
 print(f"HTML: {HTML_PATH}  ({len(HTML)} bytes)")
 
