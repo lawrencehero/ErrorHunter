@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     ./cmd/server
 
 # -------------------- Stage 2: Runtime --------------------
-FROM alpine:3.19
+FROM alpine:3.24
 
 LABEL maintainer="ErrorHunter Ops <ops@errorhunter.dev>"
 LABEL description="错题猎手后端服务"
