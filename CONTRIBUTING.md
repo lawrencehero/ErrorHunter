@@ -21,7 +21,7 @@
 
 1. **克隆并进入工程**
    ```bash
-   git clone <repo-url> ErrorHunter
+   git clone https://github.com/lawrencehero/ErrorHunter.git ErrorHunter
    cd ErrorHunter
    ```
 

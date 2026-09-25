@@ -62,7 +62,7 @@
 ### 1️⃣ 启动后端 + 依赖（Docker 一键起）
 
 ```bash
-git clone <repo-url> ErrorHunter && cd ErrorHunter
+git clone https://github.com/lawrencehero/ErrorHunter.git ErrorHunter && cd ErrorHunter
 
 cp deploy/.env.example deploy/.env                      # 开发默认值可直接跑
 make up                                                  # 起 PG/Redis/MinIO + server
