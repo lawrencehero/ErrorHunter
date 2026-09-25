@@ -20,7 +20,7 @@ dependencies:
   equatable: ^2.0.5
 
   # Dependency Injection
-  get_it: ^7.7.0
+  get_it: ^9.3.0
 
   # Navigation
   go_router: ^14.2.0
