@@ -1,0 +1,42 @@
+# EditorConfig 配置 —— https://editorconfig.org
+# 统一团队/开源贡献者的基础编辑器行为
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Go 使用 tab（gofmt 约定）
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Makefile 必须用 tab
+[Makefile]
+indent_style = tab
+
+# YAML 同 2 空格
+[*.{yml,yaml}]
+indent_size = 2
+
+# Markdown 不裁剪行尾空格（换行需要两个空格）
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+# Dart 2 空格（dart format 约定）
+[*.dart]
+indent_size = 2
+
+# Python 4 空格（PEP 8）
+[*.py]
+indent_size = 4
+
+# shell 脚本
+[*.sh]
+indent_size = 4
