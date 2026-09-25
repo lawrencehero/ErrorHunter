@@ -51,7 +51,7 @@ dependencies:
   rxdart: ^0.28.0
 
   # Permissions
-  permission_handler: ^11.3.1
+  permission_handler: ^13.0.2
 
   # Device Info
   device_info_plus: ^10.1.2
