@@ -1,7 +1,7 @@
 name: errorhunter_app
 description: 错题猎手 - 小学3-6年级及初中学生错题全生命周期管理工具
 publish_to: 'none'
-version: 1.0.26+27
+version: 1.0.27+28
 
 environment:
   sdk: ^3.5.0
