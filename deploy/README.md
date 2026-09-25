@@ -104,7 +104,7 @@ API Docs: /v1/*
 
 > ⚠️ 以上为开发环境默认值，生产部署请务必修改密码和 JWT Secret。
 
-> ℹ️ 生产环境客户端默认指向公网服务器 `http://47.108.190.116:8080/v1`（见 `src/errorhunter_app/lib/config/app_config.dart` 的 `apiBaseUrl` 默认值），可用 `--dart-define=API_BASE_URL=...` 覆盖。
+> ℹ️ 客户端默认指向本机后端 `http://localhost:8080/v1`（见 `src/errorhunter_app/lib/config/app_config.dart` 的 `apiBaseUrl` 默认值），连接生产/远程服务器时用 `--dart-define=API_BASE_URL=http://<your-server>:8080/v1` 覆盖。
 
 ---
 
@@ -171,13 +171,15 @@ API Docs: /v1/*
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OCR_PROVIDER` | mock | OCR 提供者 (mock/aliyun) |
-| `OCR_TIMEOUT` | 5 | OCR 超时时间（秒） |
+| `OCR_TIMEOUT` | 8 | OCR 超时时间（秒） |
+
+> 启用阿里云短信/OCR 时，需额外设置 `EH_SMS_ALIYUN_*`（ACCESS_KEY/SECRET_KEY/ENDPOINT/SIGN_NAME/TEMPLATE_CODE 等）与 `EH_OCR_ALIYUN_*` 变量，详见 `.env.example` 注释；docker-compose 会把它们映射为带 `EH_` 前缀的服务端环境变量。
 
 ---
 
 ## 常用命令
 
-如果安装了 Make，可直接使用以下快捷命令：
+如果安装了 Make，可直接使用以下快捷命令（在**项目根目录**执行；Makefile 位于根目录而非 deploy/）：
 
 ```bash
 make up          # 启动所有服务
@@ -186,9 +188,13 @@ make restart     # 重启所有服务
 make logs        # 查看所有服务日志
 make status      # 查看服务状态
 make test        # 运行集成测试
+make test-local  # 本地运行 Go 测试（需先启动基础设施）
 make db-shell    # 进入 PostgreSQL 命令行
 make redis-cli   # 进入 Redis 命令行
+make minio-console  # 打印 MinIO 控制台地址
+make db-reset    # 重置数据库（⚠️ 清除所有数据）
 make clean       # 停止服务并清除所有数据卷 ⚠️
+make help        # 列出全部命令
 ```
 
 手动执行等效命令：
@@ -300,15 +306,25 @@ psql "postgresql://errorhunter:errorhunter_dev@localhost:5432/errorhunter"
 ```
 deploy/
 ├── README.md                  # 本文档
-├── Makefile                   # 快捷命令（位于项目根目录）
 ├── docker-compose.yml         # 主环境编排（开发 + 集成测试）
 ├── docker-compose.test.yml    # 测试专用编排（隔离环境）
 ├── Dockerfile                 # Go 后端多阶段构建
 ├── Dockerfile.test            # 测试专用构建
-├── init-db.sql                # 数据库初始化脚本
+├── init-db.sql                # 数据库初始化脚本（业务表结构）
 ├── .env.example               # 环境变量模板
-└── .env                       # 实际环境变量（不提交到 Git）
+├── .env                       # 实际环境变量（不提交到 Git）
+├── apk_server.py              # APK 下载页 + 二维码生成（Python）
+├── apk-server/                # APK 下载服务镜像构建上下文（Dockerfile）
+├── apk-download-qr.png        # APK 下载二维码（由 apk_server.py 生成）
+├── docker/                    # 本机交叉编译后端的最小镜像方案（Dockerfile.local-bin + 二进制 + start 脚本）
+└── prod/                      # 生产环境编排（脱敏后可参考）
+    ├── docker-compose.yml     # 生产编排：端口绑 127.0.0.1、apk-server、env_file
+    ├── .env.example           # 生产环境变量模板（PUBLIC_HOST/数据库/MinIO/JWT/阿里云密钥占位）
+    └── Dockerfile.apk-server  # 生产 apk-server 镜像构建
 ```
+
+> ℹ️ Makefile 位于**项目根目录**（非 deploy/），所有 `make ...` 命令在根目录执行。
+> ℹ️ `prod/docker-compose.yml` 中 server 服务的构建上下文为 `./server-build/`、apk-server 为 `./apk-server/`，这些目录需在部署服务器上自行装配（放入交叉编译好的 Linux 二进制 + Dockerfile + apk_server.py），不在仓库内。
 
 ---
 

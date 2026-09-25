@@ -4,6 +4,20 @@
 # 来源：以前端 api_endpoints.dart 为唯一权威路径来源
 # 说明：所有 paths 已与 src/errorhunter_app/lib/data/remote/api_endpoints.dart 对齐
 #       achievements 相关 schema 已由 PM 确认（见 achievements-schema.md）
+#
+# ⚠️ 已知与后端代码（src/errorhunter_server/cmd/server/main.go 路由注册）的差异：
+#   本规范为"设计态契约"，与最终实现存在以下已知偏离，**实际可用端点以代码为准**：
+#     - 鉴权：代码用 POST /auth/otp/verify 合并"登录+注册"（老用户直接登录、新用户返回
+#       registration_token 再走 /auth/register）；本规范中的 /auth/login 未实现。
+#     - 报告：代码实际为 GET /reports（非 /reports/dashboard），DashboardResponse 字段以
+#       report_handler 返回为准。
+#     - 上传：代码为 POST /upload（multipart 直传）+ GET /upload/signed-url + GET /storage；
+#       本规范中的 /upload/url 未实现。
+#     - 图片：代码为 GET /files/{key}；本规范中的 /images/* 未实现。
+#     - 同步：代码 GET /sync/pull 用 last_sync_at 查询参数；/sync/retry 未实现。
+#     - 复习：代码有 GET /reviews/today-summary；/reviews/revive-check、/reviews/makeup-sign 未实现。
+#     - 用户：/users/reactivate 未实现；注销为软删（POST /users/me/deactivate）。
+#   修订原则：以代码为事实来源，本规范将随版本迭代收敛。
 # =============================================================================
 
 openapi: 3.0.3
@@ -136,7 +150,7 @@ paths:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
-        '201':
+        '200':
           description: 注册成功
           content:
             application/json:
@@ -194,7 +208,7 @@ paths:
       summary: 刷新Token
       description: |
         使用 Refresh Token 获取新的 Access Token。
-        Access Token 有效期24小时，Refresh Token 有效期30天。
+        Access Token 有效期15分钟，Refresh Token 有效期7天。
       operationId: authRefreshToken
       security: []
       requestBody:
@@ -260,7 +274,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   /users/me/settings:
-    patch:
+    put:
       tags: [User]
       summary: 更新个人设置
       description: 支持部分更新，所有字段选填。更新后返回完整profile对象。
@@ -483,7 +497,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-    patch:
+    put:
       tags: [Question]
       summary: 更新错题
       description: 部分更新错题信息。knowledge_point_ids和custom_tags为全量替换。
@@ -1210,7 +1224,7 @@ components:
       bearerFormat: JWT
       description: |
         JWT Access Token，通过 Authorization: Bearer <token> 传递。
-        Access Token 有效期24小时，Refresh Token 有效期30天。
+        Access Token 有效期15分钟，Refresh Token 有效期7天。
 
   # ─── Parameters ────────────────────────────────────────────
   parameters:
@@ -1468,7 +1482,7 @@ components:
 
     RegisterRequest:
       type: object
-      required: [phone, verify_token, grade, parent_consent]
+      required: [phone, verify_token, grade, agreement_accepted]
       properties:
         phone:
           type: string
@@ -1479,9 +1493,9 @@ components:
           description: 通过 /auth/otp/verify 获取的验证令牌
         grade:
           $ref: '#/components/schemas/GradeEnum'
-        parent_consent:
+        agreement_accepted:
           type: boolean
-          description: 家长知情同意（FR-001-3），必须为true
+          description: 用户协议与隐私政策知情同意（必须为true）
           example: true
         nickname:
           type: string
@@ -1778,10 +1792,11 @@ components:
           description: 出错步骤索引
         error_category:
           $ref: '#/components/schemas/ErrorCategoryEnum'
-        error_sub_category:
-          type: string
-          maxLength: 32
-          description: 错因细分类
+        sub_categories:
+          type: array
+          items:
+            type: string
+          description: 错因细分类列表
         knowledge_point_ids:
           type: array
           items:
@@ -1825,15 +1840,16 @@ components:
           minimum: 0
         error_category:
           $ref: '#/components/schemas/ErrorCategoryEnum'
-        error_sub_category:
-          type: string
-          maxLength: 32
+        sub_categories:
+          type: array
+          items:
+            type: string
         knowledge_point_ids:
           type: array
           items:
             type: integer
           minItems: 1
-          maxItems: 3
+          maxItems: 10
         custom_tags:
           type: array
           items:
@@ -1857,8 +1873,10 @@ components:
           type: string
         error_category:
           $ref: '#/components/schemas/ErrorCategoryEnum'
-        error_sub_category:
-          type: string
+        sub_categories:
+          type: array
+          items:
+            type: string
         review_round:
           type: integer
           description: 当前复习轮次(1-5)
@@ -2015,8 +2033,10 @@ components:
             $ref: '#/components/schemas/SolutionStep'
         error_category:
           $ref: '#/components/schemas/ErrorCategoryEnum'
-        error_sub_category:
-          type: string
+        sub_categories:
+          type: array
+          items:
+            type: string
         review_round:
           type: integer
         knowledge_points:
