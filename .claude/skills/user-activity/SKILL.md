@@ -13,10 +13,10 @@ description: 查询 ErrorHunter 用户学习活动记录。支持单用户明细
 
 $ARGUMENTS
 
-- 手机号（11 位）：`REDACTED_PHONE` → 单用户明细
+- 手机号（11 位）：`<your-phone>` → 单用户明细
 - user_id（纯数字）：`42` → 单用户明细
 - `all` 或留空：→ 全局概览
-- 任意模式后可附加 `prod` 查生产库，默认查本地开发库。例：`/user-activity all prod`、`/user-activity REDACTED_PHONE prod`
+- 任意模式后可附加 `prod` 查生产库，默认查本地开发库。例：`/user-activity all prod`、`/user-activity <your-phone> prod`
 
 ## 执行方式
 
@@ -27,9 +27,9 @@ $ARGUMENTS
 | 环境 | 怎么连 | 凭据 |
 |------|--------|------|
 | 本地（默认） | SSH 到生产机后连本地？否。本地库需本机自己跑 docker 或装 psql。**默认走生产库**——开发库基本不在线，日常排查都查生产 | 生产：容器内 `PGPASSWORD` 已设，无需传 |
-| 生产（带 `prod` 或默认） | `ssh` 到 47.108.190.116，`docker exec` 进 `errorhunter-postgres` 容器跑 psql | host=容器名、user=`errorhunter`、db=`errorhunter` |
+| 生产（带 `prod` 或默认） | `ssh` 到 `<your-server-ip>`，`docker exec` 进 `errorhunter-postgres` 容器跑 psql | host=容器名、user=`errorhunter`、db=`errorhunter` |
 
-SSH 私钥：`D:/aliyun/ecs-Docker-dtxf.pem`，root 登录。
+SSH 私钥：`<path-to-your-ssh-key>`，root 登录。
 
 > **默认就查生产**。除非用户显式说"查本地"，否则按生产库执行。涉及真实用户数据，只读查询。
 
@@ -38,13 +38,13 @@ SSH 私钥：`D:/aliyun/ecs-Docker-dtxf.pem`，root 登录。
 **单条 SQL**（外层双引号，SQL 内字符串用单引号；SQL 内若出现双引号需 `\"` 转义）：
 
 ```bash
-ssh -i D:/aliyun/ecs-Docker-dtxf.pem -o StrictHostKeyChecking=no root@47.108.190.116 "docker exec errorhunter-postgres psql -U errorhunter -d errorhunter -c \"<把SQL放这里>\""
+ssh -i <path-to-your-ssh-key> -o StrictHostKeyChecking=no root@<your-server-ip> "docker exec errorhunter-postgres psql -U errorhunter -d errorhunter -c \"<把SQL放这里>\""
 ```
 
 **多条 SQL**（推荐——避免引号地狱，且一次拿全）：把 SQL 写到一个临时 `.sql` 文件，用 `\echo === 段名 ===` 分段，通过 stdin 喂给容器内 psql：
 
 ```bash
-ssh -i D:/aliyun/ecs-Docker-dtxf.pem -o StrictHostKeyChecking=no root@47.108.190.116 "docker exec -i errorhunter-postgres psql -U errorhunter -d errorhunter" < <临时sql文件路径>
+ssh -i <path-to-your-ssh-key> -o StrictHostKeyChecking=no root@<your-server-ip> "docker exec -i errorhunter-postgres psql -U errorhunter -d errorhunter" < <临时sql文件路径>
 ```
 
 执行完删除临时文件。所有 SQL 都是**只读 SELECT**。
@@ -60,7 +60,7 @@ ssh -i D:/aliyun/ecs-Docker-dtxf.pem -o StrictHostKeyChecking=no root@47.108.190
 按手机号或 user_id 查用户基本信息（用单条 SQL 模板）：
 
 ```sql
-SELECT id, phone, nickname, grade, streak_days, last_active_at, last_review_date, storage_used, storage_limit, created_at FROM users WHERE phone='REDACTED_PHONE' AND deleted_at IS NULL;
+SELECT id, phone, nickname, grade, streak_days, last_active_at, last_review_date, storage_used, storage_limit, created_at FROM users WHERE phone='<your-phone>' AND deleted_at IS NULL;
 -- 或 WHERE id=42
 ```
 

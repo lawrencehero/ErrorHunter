@@ -46,29 +46,32 @@ otp:
   max_retry: 5       # max wrong attempts before lockout
   lockout_duration: 1800 # seconds (30 minutes)
   # 验证码白名单：名单内手机号跳过真实短信发送与校验，任意验证码均可通过。
-  # 仅用于测试/内部账号，生产环境必须留空。
-  bypass_phones:
-    - "REDACTED_PHONE"
+  # 仅用于测试/内部账号，生产环境必须留空。开源默认留空，按需自行填写。
+  bypass_phones: []
 
 sms:
-  provider: aliyun
+  provider: mock  # mock | aliyun（开源默认 mock，无需真实短信通道即可联调）
   aliyun:
-    access_key: "REDACTED_AK"
-    secret_key: "REDACTED_SK"
+    # ⚠️ 生产密钥请通过环境变量注入，勿写入本文件：
+    #   EH_SMS_ALIYUN_ACCESS_KEY / EH_SMS_ALIYUN_SECRET_KEY
+    access_key: ""
+    secret_key: ""
     endpoint: "dypnsapi.aliyuncs.com"
-    sign_name: "速通互联验证码"
-    template_code: "100001"
+    sign_name: ""
+    template_code: ""
     template_param: '{"code":"##code##","min":"5"}'
     code_length: 0
     code_type: 0
     valid_time: 0
 
 ocr:
-  provider: aliyun
+  provider: mock  # mock | aliyun（开源默认 mock）
   timeout: 8
   aliyun:
-    access_key: "REDACTED_AK"
-    secret_key: "REDACTED_SK"
+    # ⚠️ 生产密钥请通过环境变量注入：
+    #   EH_OCR_ALIYUN_ACCESS_KEY / EH_OCR_ALIYUN_SECRET_KEY
+    access_key: ""
+    secret_key: ""
     endpoint: "ocr-api.cn-hangzhou.aliyuncs.com"
 
 log:

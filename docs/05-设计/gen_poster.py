@@ -2,12 +2,15 @@
 # -*- coding: utf-8 -*-
 """生成自包含 HTML 介绍海报：内嵌 App 图标 + 下载二维码 + 子集化字体（全部 base64）。"""
 import base64
+import os
 import re
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 QR = base64.b64encode((ROOT / "deploy" / "apk-download-qr.png").read_bytes()).decode()
+# 下载页公网 URL；开源默认占位，实际发布前用环境变量 POSTER_DOWNLOAD_URL 覆盖
+DOWNLOAD_URL = os.environ.get("POSTER_DOWNLOAD_URL", "http://<your-download-host>:8081/").rstrip("/")
 
 # 读 App 图标并裁掉透明边距，避免图形只占画布中心一小块、在 logo 框里"缩一圈"
 from PIL import Image as _PILImage
@@ -432,7 +435,7 @@ HTML = r"""<!DOCTYPE html>
     <div class="dl-text">
       <div class="dl-title">📲 扫码下载</div>
       <div class="dl-sub">手机微信/浏览器扫描左侧二维码<br>即可下载安装错题猎手安卓版</div>
-      <div class="dl-url">http://47.108.190.116:8081/</div>
+      <div class="dl-url">__DOWNLOAD_URL__/</div>
       <div class="dl-meta">
         <span class="dl-tag">🤖 Android APK</span>
         <span class="dl-tag">🏷 v__VERSION__</span>
@@ -450,6 +453,7 @@ HTML = r"""<!DOCTYPE html>
 """
 
 HTML = HTML.replace("__QR_DATA__", QR_URI).replace("__ICON_DATA__", ICON_URI)
+HTML = HTML.replace("__DOWNLOAD_URL__", DOWNLOAD_URL)
 HTML = HTML.replace("__VERSION__", VERSION).replace("__SIZE_MB__", SIZE_MB)
 HTML = HTML.replace("/* __FONT_FACE__ */", build_font_face(HTML))
 out = Path(__file__).resolve().parent / "poster-介绍海报.html"

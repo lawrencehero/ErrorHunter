@@ -1,0 +1,89 @@
+# ============================================================
+# ErrorHunter Server Configuration —— 模板文件
+# ------------------------------------------------------------
+# 使用方式：
+#   cp configs/config.example.yaml configs/config.yaml   # 按需修改
+#   ./errorhunter_server -config configs/config.yaml     # 或通过 CONFIG_PATH 指定
+#
+# 所有敏感字段（带 ⚠️ 标记）建议通过环境变量注入，环境变量前缀为 EH_，
+# 配置键中的 "." 替换为 "_"。例如 sms.aliyun.access_key → EH_SMS_ALIYUN_ACCESS_KEY。
+# 此文件不含任何真实密钥，可安全提交。
+# ============================================================
+
+server:
+  port: 8080
+  mode: debug  # debug, release, test
+
+database:
+  host: localhost
+  port: 5432
+  user: errorhunter
+  # ⚠️ 生产环境必须通过环境变量覆盖：EH_DATABASE_PASSWORD=<强密码>
+  password: errorhunter_dev
+  dbname: errorhunter
+  sslmode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300  # seconds
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+  pool_size: 10
+
+minio:
+  endpoint: localhost:9000
+  access_key: minioadmin
+  secret_key: minioadmin123
+  bucket: errorhunter
+  region: us-east-1
+  use_ssl: false
+
+jwt:
+  # ⚠️ 生产环境必须通过环境变量覆盖：
+  #   EH_JWT_ACCESS_SECRET=<随机64字符>
+  #   EH_JWT_REFRESH_SECRET=<随机64字符>
+  access_secret: "change-me-access-secret"
+  refresh_secret: "change-me-refresh-secret"
+  access_expire: 15      # minutes
+  refresh_expire: 10080  # minutes (7 days)
+
+otp:
+  expire: 300        # seconds (5 minutes)
+  resend_interval: 60 # seconds
+  daily_limit: 10
+  max_retry: 5       # max wrong attempts before lockout
+  lockout_duration: 1800 # seconds (30 minutes)
+  # 验证码白名单：名单内手机号跳过真实短信发送与校验，任意验证码均可通过。
+  # 仅用于测试/内部账号，生产环境必须留空。
+  bypass_phones: []
+
+sms:
+  provider: mock  # mock | aliyun
+  aliyun:
+    # ⚠️ 通过环境变量注入：EH_SMS_ALIYUN_ACCESS_KEY / EH_SMS_ALIYUN_SECRET_KEY
+    access_key: ""
+    secret_key: ""
+    endpoint: "dypnsapi.aliyuncs.com"
+    sign_name: ""
+    template_code: ""
+    template_param: '{"code":"##code##","min":"5"}'
+    code_length: 0
+    code_type: 0
+    valid_time: 0
+
+ocr:
+  provider: mock  # mock | aliyun
+  timeout: 8
+  aliyun:
+    # ⚠️ 通过环境变量注入：EH_OCR_ALIYUN_ACCESS_KEY / EH_OCR_ALIYUN_SECRET_KEY
+    access_key: ""
+    secret_key: ""
+    endpoint: "ocr-api.cn-hangzhou.aliyuncs.com"
+
+log:
+  level: debug       # debug, info, warn, error
+  format: json       # json, console
+  output: stdout     # stdout, file
+  file_path: "./logs/server.log"

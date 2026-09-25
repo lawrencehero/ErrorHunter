@@ -1,0 +1,19 @@
+# ============================================================
+# Flutter Android 本地 SDK 路径配置（机器特定，勿提交）
+# ------------------------------------------------------------
+# 使用方式：
+#   cp android/local.properties.example android/local.properties
+#   按本机实际路径修改下面两行
+# 此文件已在 .gitignore，仅供新建工程时参考。
+# ============================================================
+
+# Flutter SDK 路径（flutter doctor 显示的 Flutter installation location）
+flutter.sdk=/path/to/flutter
+
+# Android SDK 路径
+sdk.dir=/path/to/Android/Sdk
+
+# 发布构建模式与版本（可选，由发布脚本覆盖）
+flutter.buildMode=release
+flutter.versionName=1.0.0
+flutter.versionCode=1

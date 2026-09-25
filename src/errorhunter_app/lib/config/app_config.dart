@@ -16,10 +16,11 @@ class AppConfig {
   static const bool useMock = false;
 
   /// 后端 API 基础 URL（含 /v1 前缀）
-  /// 默认指向生产公网服务器；本地开发可用 --dart-define=API_BASE_URL=... 覆盖
+  /// 默认指向本机后端；连接生产/远程环境时用 --dart-define=API_BASE_URL=... 覆盖，
+  /// 例：flutter run --dart-define=API_BASE_URL=http://<your-server>:8080/v1
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://47.108.190.116:8080/v1',
+    defaultValue: 'http://localhost:8080/v1',
   );
 
   /// API 请求超时时间（秒）

@@ -64,3 +64,17 @@ docs/05-设计/_gfont.css
 # 本地后端容器环境变量快照（含数据库密码/JWT/阿里云密钥，勿提交）
 server.env
 **/server.env
+
+# 交叉编译产物（部署时 scp 到服务器，勿提交）
+deploy/docker/server
+**/server-linux
+
+# Flutter / iOS 自动生成的机器特定文件（flutter 命令重新生成）
+**/Generated.xcconfig
+**/flutter_export_environment.sh
+
+# WSL 临时目录
+wsl_tmp/
+
+# 本地 env 覆盖（不提交）
+*.env.local

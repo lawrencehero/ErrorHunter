@@ -33,7 +33,7 @@ QR_OUTPUT = PROJECT_ROOT / "deploy" / "apk-download-qr.png"
 #   APK_APK_PATH   — APK 文件绝对路径
 #   APK_PUBSPEC_PATH — pubspec.yaml 路径（用于读版本号；缺失则回退默认）
 #   APK_PORT       — 监听端口（默认 8080；公网部署建议避开后端 8080，用 8081）
-#   PUBLIC_URL     — 公网下载根 URL（如 http://47.108.190.116:8081）；设置后二维码与
+#   PUBLIC_URL     — 公网下载根 URL（如 http://<your-host>:8081）；设置后二维码与
 #                    落地页用它，否则自动探测本机局域网 IP
 #   APK_QR_OUTPUT  — 二维码图片输出路径
 APK_PATH = Path(os.environ.get("APK_APK_PATH") or str(APK_PATH))

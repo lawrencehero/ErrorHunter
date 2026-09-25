@@ -1,0 +1,19 @@
+# ============================================================
+# 错题猎手 APK 下载服务器容器（生产）
+# 与 deploy/apk-server/Dockerfile 的区别：pip 走阿里云镜像源，
+# 避免 ECS 上访问 pypi.org 慢/失败。
+# APK 与 pubspec.yaml 通过 volume 挂载（./apk:/data），不打进镜像。
+# ============================================================
+FROM python:3.11-slim
+
+LABEL maintainer="ErrorHunter Ops <ops@errorhunter.dev>"
+
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ qrcode pillow
+
+WORKDIR /app
+COPY apk_server.py /app/apk_server.py
+
+ENV APK_PORT=8081
+EXPOSE 8081
+
+CMD ["python3", "/app/apk_server.py"]

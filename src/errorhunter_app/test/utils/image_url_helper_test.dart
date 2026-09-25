@@ -5,7 +5,7 @@
 /// 同时确保 mock/空串/相对路径不被误改。
 ///
 /// 注意：`AppConfig.apiBaseUrl` 在 `flutter test` 下未注入 `--dart-define`，
-/// 取默认值 `http://47.108.190.116:8080/v1`。故这里始终构造一个
+/// 取默认值 `http://localhost:8080/v1`。故这里始终构造一个
 /// **与当前 API base host 不同** 的旧 URL 来验证替换行为，
 /// 避免命中 no-op 分支（同 host 不改写）。
 library;
