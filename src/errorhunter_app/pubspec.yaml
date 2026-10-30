@@ -45,7 +45,7 @@ dependencies:
   pdf: ^3.11.0
 
   # Charts
-  fl_chart: ^0.69.0
+  fl_chart: ^1.2.0
 
   # Reactive Extensions
   rxdart: ^0.28.0
